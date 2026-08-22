@@ -22,4 +22,8 @@ export {
   getRun,
   finishRun,
   listRunningRuns,
+  getProviderConfig,
+  upsertProviderConfig,
+  upsertVoiceProfile,
+  upsertSetting,
 } from "./queries.ts";

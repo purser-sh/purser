@@ -118,20 +118,47 @@ function mapSetting(row: typeof settings.$inferSelect): Setting {
   return { key: row.key, value: row.value };
 }
 
+const DEFAULT_PROVIDERS: Array<{
+  providerId: string;
+  label: string;
+  baseUrl: string | null;
+  authMode: "cli_login" | "keychain" | "none";
+}> = [
+  { providerId: "echo", label: "Echo (fake)", baseUrl: null, authMode: "none" },
+  { providerId: "claude_code", label: "Claude Code", baseUrl: null, authMode: "cli_login" },
+  { providerId: "codex", label: "OpenAI Codex", baseUrl: null, authMode: "cli_login" },
+  { providerId: "cursor_agent", label: "Cursor Agent", baseUrl: null, authMode: "cli_login" },
+  { providerId: "gemini_cli", label: "Gemini CLI", baseUrl: null, authMode: "cli_login" },
+  { providerId: "ollama", label: "Ollama", baseUrl: "http://127.0.0.1:11434/v1", authMode: "none" },
+  { providerId: "grok", label: "Grok (xAI)", baseUrl: "https://api.x.ai/v1", authMode: "keychain" },
+  {
+    providerId: "generic_llm",
+    label: "OpenAI compatible",
+    baseUrl: "http://127.0.0.1:11434/v1",
+    authMode: "keychain",
+  },
+  {
+    providerId: "perplexity",
+    label: "Perplexity (research)",
+    baseUrl: "https://api.perplexity.ai",
+    authMode: "keychain",
+  },
+];
+
 export async function seedDefaults(db: AppDatabase): Promise<void> {
-  const existingEcho = db
-    .select()
-    .from(providerConfigs)
-    .where(eq(providerConfigs.providerId, "echo"))
-    .all();
-  if (existingEcho.length === 0) {
+  const existing = db.select().from(providerConfigs).all();
+  const have = new Set(existing.map((row) => row.providerId));
+  for (const seed of DEFAULT_PROVIDERS) {
+    if (have.has(seed.providerId)) {
+      continue;
+    }
     db.insert(providerConfigs)
       .values({
         id: newId("pc"),
-        providerId: "echo",
-        label: "Echo (fake)",
-        baseUrl: null,
-        authMode: "none",
+        providerId: seed.providerId,
+        label: seed.label,
+        baseUrl: seed.baseUrl,
+        authMode: seed.authMode,
         settings: {},
       })
       .run();
@@ -250,6 +277,7 @@ export function updateSession(
     modelId?: string | null;
     providerSessionId?: string | null;
     permissionMode?: PermissionMode;
+    worktreePath?: string | null;
     status?: SessionStatus;
     tokensIn?: number;
     tokensOut?: number;
@@ -266,6 +294,7 @@ export function updateSession(
   if (patch.modelId !== undefined) setValues.modelId = patch.modelId;
   if (patch.providerSessionId !== undefined) setValues.providerSessionId = patch.providerSessionId;
   if (patch.permissionMode !== undefined) setValues.permissionMode = patch.permissionMode;
+  if (patch.worktreePath !== undefined) setValues.worktreePath = patch.worktreePath;
   if (patch.status !== undefined) setValues.status = patch.status;
   if (patch.tokensIn !== undefined) setValues.tokensIn = patch.tokensIn;
   if (patch.tokensOut !== undefined) setValues.tokensOut = patch.tokensOut;
@@ -348,4 +377,132 @@ export function finishRun(
 
 export function listRunningRuns(db: AppDatabase): Run[] {
   return db.select().from(runs).where(eq(runs.status, "running")).all().map(mapRun);
+}
+
+export function getProviderConfig(db: AppDatabase, providerId: string): ProviderConfig | undefined {
+  const row = db.select().from(providerConfigs).where(eq(providerConfigs.providerId, providerId)).get();
+  return row === undefined ? undefined : mapProviderConfig(row);
+}
+
+export function upsertProviderConfig(
+  db: AppDatabase,
+  input: {
+    id?: string;
+    providerId: string;
+    label: string;
+    baseUrl: string | null;
+    authMode: ProviderConfig["authMode"];
+    settings: Record<string, unknown>;
+  },
+): ProviderConfig {
+  const existing =
+    input.id !== undefined
+      ? db.select().from(providerConfigs).where(eq(providerConfigs.id, input.id)).get()
+      : db.select().from(providerConfigs).where(eq(providerConfigs.providerId, input.providerId)).get();
+  if (existing === undefined) {
+    const row = {
+      id: input.id ?? newId("pc"),
+      providerId: input.providerId,
+      label: input.label,
+      baseUrl: input.baseUrl,
+      authMode: input.authMode,
+      settings: input.settings,
+    };
+    db.insert(providerConfigs).values(row).run();
+    return mapProviderConfig(row);
+  }
+  db.update(providerConfigs)
+    .set({
+      providerId: input.providerId,
+      label: input.label,
+      baseUrl: input.baseUrl,
+      authMode: input.authMode,
+      settings: input.settings,
+    })
+    .where(eq(providerConfigs.id, existing.id))
+    .run();
+  const updated = db.select().from(providerConfigs).where(eq(providerConfigs.id, existing.id)).get();
+  if (updated === undefined) {
+    throw new Error("provider config missing after update");
+  }
+  return mapProviderConfig(updated);
+}
+
+export function upsertVoiceProfile(
+  db: AppDatabase,
+  input: {
+    id?: string;
+    name: string;
+    wakeWord: string | null;
+    sttProvider: string;
+    ttsProvider: string;
+    voiceId: string | null;
+    speed: number;
+    language: string;
+    personaPrompt: string;
+    verbosity: VoiceProfile["verbosity"];
+    interruptOnSpeech: boolean;
+    isDefault: boolean;
+  },
+): VoiceProfile {
+  if (input.isDefault) {
+    for (const row of db.select().from(voiceProfiles).all()) {
+      if (row.isDefault) {
+        db.update(voiceProfiles).set({ isDefault: false }).where(eq(voiceProfiles.id, row.id)).run();
+      }
+    }
+  }
+  const existing =
+    input.id !== undefined
+      ? db.select().from(voiceProfiles).where(eq(voiceProfiles.id, input.id)).get()
+      : undefined;
+  if (existing === undefined) {
+    const row = {
+      id: input.id ?? newId("vp"),
+      name: input.name,
+      wakeWord: input.wakeWord,
+      sttProvider: input.sttProvider,
+      ttsProvider: input.ttsProvider,
+      voiceId: input.voiceId,
+      speed: input.speed,
+      language: input.language,
+      personaPrompt: input.personaPrompt,
+      verbosity: input.verbosity,
+      interruptOnSpeech: input.interruptOnSpeech,
+      isDefault: input.isDefault,
+    };
+    db.insert(voiceProfiles).values(row).run();
+    return mapVoiceProfile(row);
+  }
+  db.update(voiceProfiles)
+    .set({
+      name: input.name,
+      wakeWord: input.wakeWord,
+      sttProvider: input.sttProvider,
+      ttsProvider: input.ttsProvider,
+      voiceId: input.voiceId,
+      speed: input.speed,
+      language: input.language,
+      personaPrompt: input.personaPrompt,
+      verbosity: input.verbosity,
+      interruptOnSpeech: input.interruptOnSpeech,
+      isDefault: input.isDefault,
+    })
+    .where(eq(voiceProfiles.id, existing.id))
+    .run();
+  const updated = db.select().from(voiceProfiles).where(eq(voiceProfiles.id, existing.id)).get();
+  if (updated === undefined) {
+    throw new Error("voice profile missing after update");
+  }
+  return mapVoiceProfile(updated);
+}
+
+export function upsertSetting(db: AppDatabase, key: string, value: unknown): Setting {
+  const existing = db.select().from(settings).where(eq(settings.key, key)).get();
+  if (existing === undefined) {
+    db.insert(settings).values({ key, value }).run();
+  } else {
+    db.update(settings).set({ value }).where(eq(settings.key, key)).run();
+  }
+  return { key, value };
 }

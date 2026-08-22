@@ -9,7 +9,8 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate --config ./drizzle.config.ts"
   },
   "dependencies": {
     "@agentdeck/protocol": "workspace:*",

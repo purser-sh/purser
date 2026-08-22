@@ -11,3 +11,6 @@ dist
 *.db-shm
 coverage
 .vite
+.tmp-*
+.tmp-home-*
+.tmp-ws-*

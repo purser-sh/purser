@@ -8,3 +8,5 @@ export type {
   VadProvider,
   VadResult,
 } from "./types.ts";
+export { EnergyVad, pcmRms } from "./vad.ts";
+export { OpenAiStt, OpenAiTts, transcribePcm } from "./openai.ts";

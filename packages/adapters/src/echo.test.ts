@@ -25,6 +25,7 @@ describe("echoAdapter", () => {
       echoAdapter.run({
         runId: "run_1",
         cwd: "/tmp",
+        workspaceRoot: "/tmp",
         prompt: "hello",
         permissionMode: "ask",
         signal: new AbortController().signal,
@@ -45,6 +46,7 @@ describe("echoAdapter", () => {
       echoAdapter.run({
         runId: "run_2",
         cwd: "/tmp",
+        workspaceRoot: "/tmp",
         prompt: "again",
         providerSessionId: "echo-run_1",
         permissionMode: "ask",

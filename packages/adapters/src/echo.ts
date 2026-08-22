@@ -22,34 +22,41 @@ export const echoAdapter: AgentAdapter = {
   },
 
   async *run(input: RunInput): AsyncIterable<AgentEvent> {
-    assertNotAborted(input.signal);
     const providerSessionId = input.providerSessionId ?? `echo-${input.runId}`;
-    yield { kind: "session_started", providerSessionId };
-    yield { kind: "text_delta", text: "You said: " };
-    yield { kind: "text_delta", text: input.prompt };
-    yield { kind: "text", text: `You said: ${input.prompt}` };
-    yield {
-      kind: "tool_call",
-      toolId: "echo-read-1",
-      name: "read_file",
-      input: { path: "README.md" },
-      summary: "read README.md",
-    };
-    yield {
-      kind: "tool_result",
-      toolId: "echo-read-1",
-      ok: true,
-      output: "# AgentDeck\n",
-      ms: 1,
-    };
-    yield {
-      kind: "file_diff",
-      path: "README.md",
-      patch: "@@ -1,1 +1,2 @@\n # AgentDeck\n+# echoed\n",
-      added: 1,
-      removed: 0,
-    };
-    yield { kind: "usage", tokensIn: input.prompt.length, tokensOut: input.prompt.length + 10, costUsd: 0 };
-    yield { kind: "done", status: "ok", summary: "Echoed your message" };
+    const events: AgentEvent[] = [
+      { kind: "session_started", providerSessionId },
+      { kind: "text_delta", text: "You said: " },
+      { kind: "text_delta", text: input.prompt },
+      { kind: "text", text: `You said: ${input.prompt}` },
+      {
+        kind: "tool_call",
+        toolId: "echo-read-1",
+        name: "read_file",
+        input: { path: "README.md" },
+        summary: "read README.md",
+      },
+      {
+        kind: "tool_result",
+        toolId: "echo-read-1",
+        ok: true,
+        output: "# AgentDeck\n",
+        ms: 1,
+      },
+      {
+        kind: "file_diff",
+        path: "README.md",
+        patch: "@@ -1,1 +1,2 @@\n # AgentDeck\n+# echoed\n",
+        added: 1,
+        removed: 0,
+      },
+      { kind: "usage", tokensIn: input.prompt.length, tokensOut: input.prompt.length + 10, costUsd: 0 },
+      { kind: "done", status: "ok", summary: "Echoed your message" },
+    ];
+
+    for (const event of events) {
+      assertNotAborted(input.signal);
+      yield event;
+      await Promise.resolve();
+    }
   },
 };

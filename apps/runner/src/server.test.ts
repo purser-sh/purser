@@ -41,6 +41,9 @@ describe("runner websocket", () => {
       db,
       clients: new Set(),
       activeRuns: new Map(),
+      pendingPermissions: new Map(),
+      relay: null,
+      voice: null,
     };
     const server = await startServer(ctx);
     const ws = new WebSocket(`ws://127.0.0.1:${server.port}`);

@@ -1,6 +1,7 @@
 import type { AgentEvent, EventRole, ServerMessage } from "@agentdeck/protocol";
 import {
   finishRun,
+  getProviderConfig,
   getSession,
   getWorkspace,
   insertEvent,
@@ -10,6 +11,8 @@ import {
 } from "@agentdeck/db";
 import { getAdapter } from "./registry.ts";
 import { appendRunLog } from "./run-log.ts";
+import { getSecret } from "./secrets.ts";
+import { buildExtraPrompt } from "./skills.ts";
 
 const SKIP_PERSIST = new Set<AgentEvent["kind"]>(["text_delta"]);
 
@@ -26,6 +29,12 @@ function isAbortError(error: unknown): boolean {
 
 export type RunBroadcast = (message: Omit<ServerMessage, "id"> & { id?: string }) => void;
 
+export type AskPermission = (request: {
+  requestId: string;
+  action: string;
+  detail: unknown;
+}) => Promise<boolean>;
+
 export async function executeRun(input: {
   db: AppDatabase;
   sessionId: string;
@@ -33,6 +42,7 @@ export async function executeRun(input: {
   prompt: string;
   signal: AbortSignal;
   broadcast: RunBroadcast;
+  askPermission: AskPermission;
 }): Promise<void> {
   const session = getSession(input.db, input.sessionId);
   if (session === undefined) {
@@ -47,6 +57,13 @@ export async function executeRun(input: {
     throw new Error(`provider ${session.providerId} is not available yet`);
   }
 
+  const cwd = session.worktreePath ?? workspace.absPath;
+  const provider = getProviderConfig(input.db, session.providerId);
+  const apiKey = getSecret(session.providerId);
+  const extra = [buildExtraPrompt(workspace.absPath), provider?.settings.personaPrompt]
+    .filter((part): part is string => typeof part === "string" && part.length > 0)
+    .join("\n\n");
+
   let seq = 0;
   let runStatus: "ok" | "cancelled" | "error" = "ok";
   let runError: string | null = null;
@@ -54,12 +71,25 @@ export async function executeRun(input: {
   try {
     for await (const event of adapter.run({
       runId: input.runId,
-      cwd: workspace.absPath,
+      cwd,
+      workspaceRoot: cwd,
       prompt: input.prompt,
       modelId: session.modelId ?? undefined,
       providerSessionId: session.providerSessionId ?? undefined,
       permissionMode: session.permissionMode,
       signal: input.signal,
+      extraSystemPrompt: extra.length > 0 ? extra : undefined,
+      config: {
+        baseUrl: provider?.baseUrl ?? null,
+        apiKey,
+        settings: provider?.settings ?? {},
+      },
+      askPermission: async (request) =>
+        input.askPermission({
+          requestId: request.requestId,
+          action: request.action,
+          detail: request.detail,
+        }),
     })) {
       appendRunLog(input.runId, event);
       input.broadcast({

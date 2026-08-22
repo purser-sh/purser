@@ -10,6 +10,9 @@ const ctx: AppContext = {
   db,
   clients: new Set(),
   activeRuns: new Map(),
+  pendingPermissions: new Map(),
+  relay: null,
+  voice: null,
 };
 
 const { port } = await startServer(ctx);

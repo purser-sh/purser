@@ -1,4 +1,19 @@
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
+
+export function isGitRepo(absPath: string): boolean {
+  const top = spawnSync("git", ["-C", absPath, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  });
+  if (top.status !== 0) {
+    return false;
+  }
+  try {
+    return realpathSync(top.stdout.trim()) === realpathSync(absPath);
+  } catch {
+    return false;
+  }
+}
 
 export function detectGitRemote(absPath: string): string | null {
   const inside = spawnSync("git", ["-C", absPath, "rev-parse", "--is-inside-work-tree"], {

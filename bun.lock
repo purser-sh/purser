@@ -12,6 +12,14 @@
     "apps/relay": {
       "name": "@agentdeck/relay",
       "version": "0.0.1",
+      "dependencies": {
+        "ws": "^8.18.3",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.0",
+        "@types/ws": "^8.18.1",
+        "typescript": "^5.9.2",
+      },
     },
     "apps/runner": {
       "name": "@agentdeck/runner",

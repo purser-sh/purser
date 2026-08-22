@@ -1,4 +1,5 @@
-import { FolderPlus, Mic, Search, Settings } from "lucide-react";
+import { FolderPlus, Search, Settings } from "lucide-react";
+import { VoiceButton } from "@/components/VoiceButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,8 +9,7 @@ export function TopBar(props: { onNewWorkspace: () => void; onSettings: () => vo
   const connection = useDeckStore((state) => state.connection);
   const search = useDeckStore((state) => state.search);
   const setSearch = useDeckStore((state) => state.setSearch);
-  const profiles = useDeckStore((state) => state.voiceProfiles);
-  const defaultProfile = profiles.find((profile) => profile.isDefault) ?? profiles[0];
+  const transcript = useDeckStore((state) => state.transcriptPartial);
 
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border px-4">
@@ -19,7 +19,9 @@ export function TopBar(props: { onNewWorkspace: () => void; onSettings: () => vo
         </div>
         <div>
           <div className="text-sm font-semibold tracking-wide">AgentDeck</div>
-          <div className="text-[11px] text-muted-foreground">local operator console</div>
+          <div className="text-[11px] text-muted-foreground">
+            {transcript.length > 0 ? transcript : "local operator console"}
+          </div>
         </div>
       </div>
       <div className="mx-auto flex w-full max-w-md items-center gap-2">
@@ -33,10 +35,7 @@ export function TopBar(props: { onNewWorkspace: () => void; onSettings: () => vo
       <Badge className={connection === "ready" ? "border-emerald-500/40 text-emerald-400" : "text-amber-400"}>
         {connection}
       </Badge>
-      <Button disabled size="sm" title="Voice is Phase 6" type="button" variant="outline">
-        <Mic className="h-4 w-4" />
-        {defaultProfile?.name ?? "Voice"}
-      </Button>
+      <VoiceButton />
       <Button onClick={props.onNewWorkspace} size="sm" type="button" variant="secondary">
         <FolderPlus className="h-4 w-4" />
         Workspace

@@ -1,5 +1,9 @@
 import type {
+  ModelInfo,
   PermissionMode,
+  PermissionRequestPayload,
+  ProviderHealthPayload,
+  RelayStatusPayload,
   Run,
   ServerMessage,
   Session,
@@ -18,12 +22,21 @@ type DeckStore = StatePayload & {
   selectedSessionId: string | null;
   liveText: Record<string, string>;
   search: string;
+  modelsByProvider: Record<string, ModelInfo[]>;
+  healthByProvider: Record<string, ProviderHealthPayload>;
+  pendingPermissions: PermissionRequestPayload[];
+  relayStatus: RelayStatusPayload | null;
+  transcriptPartial: string;
+  transcriptFinal: string;
+  voiceActive: boolean;
   setSearch: (value: string) => void;
   setConnection: (status: ConnectionStatus, detail?: string) => void;
   applyState: (state: StatePayload) => void;
   applyServerMessage: (message: ServerMessage) => void;
   selectWorkspace: (id: string | null) => void;
   selectSession: (id: string | null) => void;
+  setVoiceActive: (active: boolean) => void;
+  clearPermission: (requestId: string) => void;
 };
 
 function selectAfterState(state: StatePayload, currentWorkspaceId: string | null, currentSessionId: string | null) {
@@ -53,7 +66,17 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   selectedSessionId: null,
   liveText: {},
   search: "",
+  modelsByProvider: {},
+  healthByProvider: {},
+  pendingPermissions: [],
+  relayStatus: null,
+  transcriptPartial: "",
+  transcriptFinal: "",
+  voiceActive: false,
   setSearch: (value) => set({ search: value }),
+  setVoiceActive: (active) => set({ voiceActive: active }),
+  clearPermission: (requestId) =>
+    set({ pendingPermissions: get().pendingPermissions.filter((item) => item.requestId !== requestId) }),
   setConnection: (status, detail) => set({ connection: status, connectionDetail: detail ?? null }),
   applyState: (state) => {
     const selected = selectAfterState(state, get().selectedWorkspaceId, get().selectedSessionId);
@@ -122,6 +145,53 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       });
       return;
     }
+    if (message.type === "permission_request") {
+      set({
+        pendingPermissions: [
+          ...current.pendingPermissions.filter((item) => item.requestId !== message.payload.requestId),
+          message.payload,
+        ],
+      });
+      return;
+    }
+    if (message.type === "models") {
+      set({
+        modelsByProvider: { ...current.modelsByProvider, [message.payload.providerId]: message.payload.models },
+      });
+      return;
+    }
+    if (message.type === "provider_health") {
+      set({
+        healthByProvider: { ...current.healthByProvider, [message.payload.providerId]: message.payload },
+      });
+      return;
+    }
+    if (message.type === "relay_status") {
+      set({ relayStatus: message.payload });
+      return;
+    }
+    if (message.type === "transcript_partial") {
+      set({ transcriptPartial: message.payload.text });
+      return;
+    }
+    if (message.type === "transcript_final") {
+      const text = message.payload.text;
+      if (text.startsWith("SPEAK:")) {
+        const spoken = text.slice("SPEAK:".length);
+        if (typeof window !== "undefined" && "speechSynthesis" in window) {
+          const utterance = new SpeechSynthesisUtterance(spoken);
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utterance);
+        }
+        return;
+      }
+      set({ transcriptFinal: text, transcriptPartial: "" });
+      return;
+    }
+    if (message.type === "tts_audio_chunk") {
+      void playPcm16(message.payload.pcm16Base64, message.payload.sampleRate);
+      return;
+    }
     if (message.type === "agent_event") {
       const event = message.payload.event;
       if (event.kind === "text_delta") {
@@ -162,14 +232,47 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         }
         return session;
       });
+      const pendingPermissions =
+        event.kind === "permission_request"
+          ? [
+              ...current.pendingPermissions.filter((item) => item.requestId !== event.requestId),
+              {
+                requestId: event.requestId,
+                sessionId: message.payload.sessionId,
+                runId: message.payload.runId,
+                action: event.action,
+                detail: event.detail,
+              },
+            ]
+          : current.pendingPermissions;
       set({
         events: already ? current.events : [...current.events, stored],
         sessions,
         liveText,
+        pendingPermissions,
       });
     }
   },
 }));
+
+async function playPcm16(base64: string, sampleRate: number): Promise<void> {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  const samples = new Int16Array(bytes.buffer);
+  const ctx = new AudioContext({ sampleRate });
+  const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+  const channel = buffer.getChannelData(0);
+  for (let i = 0; i < samples.length; i += 1) {
+    channel[i] = (samples[i] ?? 0) / 32768;
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.start();
+}
 
 export function workspaceSessions(sessions: Session[], workspaceId: string | null): Session[] {
   return sessions.filter((session) => session.workspaceId === workspaceId);

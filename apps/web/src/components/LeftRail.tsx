@@ -13,6 +13,7 @@ export function LeftRail() {
   const selectWorkspace = useDeckStore((state) => state.selectWorkspace);
   const selectSession = useDeckStore((state) => state.selectSession);
   const search = useDeckStore((state) => state.search);
+  const providerConfigs = useDeckStore((state) => state.providerConfigs);
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
   const filtered = useMemo(() => {
@@ -88,9 +89,10 @@ export function LeftRail() {
                   <Button
                     className="w-full justify-start"
                     onClick={() => {
+                      const first = providerConfigs[0]?.providerId ?? "echo";
                       void client.request("create_session", {
                         workspaceId: workspace.id,
-                        providerId: "echo",
+                        providerId: first,
                         permissionMode: "ask",
                       });
                     }}

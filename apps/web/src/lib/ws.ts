@@ -4,6 +4,7 @@ export type Bootstrap = {
   wsUrl: string;
   token: string;
   allowedRoots: string[];
+  pair?: { role: "phone" | "runner"; code: string };
 };
 
 export async function fetchBootstrap(): Promise<Bootstrap> {
@@ -68,6 +69,9 @@ export class RunnerClient {
     const ws = new WebSocket(this.bootstrap.wsUrl);
     this.ws = ws;
     ws.addEventListener("open", () => {
+      if (this.bootstrap.pair !== undefined) {
+        ws.send(JSON.stringify({ type: "pair", role: this.bootstrap.pair.role, code: this.bootstrap.pair.code }));
+      }
       void this.request("hello", {
         token: this.bootstrap.token,
         clientVersion: "0.1.0",
@@ -82,7 +86,12 @@ export class RunnerClient {
         });
     });
     ws.addEventListener("message", (event) => {
-      const parsed = parseServerMessage(JSON.parse(String(event.data)));
+      let parsed: ServerMessage;
+      try {
+        parsed = parseServerMessage(JSON.parse(String(event.data)));
+      } catch {
+        return;
+      }
       const waiter = this.pending.get(parsed.id);
       if (waiter) {
         this.pending.delete(parsed.id);

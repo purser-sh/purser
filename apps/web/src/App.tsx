@@ -5,6 +5,7 @@ import { FolderPicker } from "@/components/FolderPicker";
 import { LeftRail } from "@/components/LeftRail";
 import { RightPanel } from "@/components/RightPanel";
 import { TopBar } from "@/components/TopBar";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { Dialog } from "@/components/ui/dialog";
 import { ClientProvider } from "@/lib/client";
 import { useDeckStore } from "@/lib/store";
@@ -68,10 +69,7 @@ export function App() {
         </div>
         <FolderPicker onClose={() => setPicker(false)} open={picker} />
         <Dialog onClose={() => setSettings(false)} open={settings} title="Settings">
-          <p className="text-sm text-muted-foreground">
-            Runner token and SQLite live in <code className="font-mono">~/.agentdeck</code>. Echo needs no API key.
-            Claude, Codex, Cursor, Gemini, Grok, and Ollama land in later phases.
-          </p>
+          <SettingsPanel />
         </Dialog>
       </div>
     </ClientProvider>

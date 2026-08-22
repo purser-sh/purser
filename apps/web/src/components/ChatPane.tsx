@@ -37,7 +37,8 @@ function ToolCard({ event }: { event: Extract<AgentEvent, { kind: "tool_call" | 
   );
 }
 
-function EventView({ event }: { event: StoredEvent }) {
+function EventView({ event, sessionId }: { event: StoredEvent; sessionId: string }) {
+  const client = useRunner();
   if (event.payload.kind === "user_message") {
     return (
       <div className="ml-auto max-w-[75%] rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
@@ -77,6 +78,48 @@ function EventView({ event }: { event: StoredEvent }) {
           </span>
         </div>
         <pre className="overflow-x-auto text-[11px] text-emerald-300">{agent.patch}</pre>
+        <div className="mt-2 flex justify-end gap-2">
+          <Button
+            onClick={() => void client.request("diff_response", { sessionId, path: agent.path, approve: false })}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Reject
+          </Button>
+          <Button
+            onClick={() => void client.request("diff_response", { sessionId, path: agent.path, approve: true })}
+            size="sm"
+            type="button"
+          >
+            Approve
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (agent.kind === "permission_request") {
+    return (
+      <div className="w-full max-w-xl rounded-lg border border-amber-500/40 bg-amber-950/40 p-3 text-sm">
+        <p className="font-medium">Allow {agent.action}?</p>
+        <pre className="mt-2 overflow-x-auto text-[11px] text-muted-foreground">{JSON.stringify(agent.detail, null, 2)}</pre>
+        <div className="mt-2 flex justify-end gap-2">
+          <Button
+            onClick={() => void client.request("permission_response", { requestId: agent.requestId, allow: false })}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Deny
+          </Button>
+          <Button
+            onClick={() => void client.request("permission_response", { requestId: agent.requestId, allow: true })}
+            size="sm"
+            type="button"
+          >
+            Allow
+          </Button>
+        </div>
       </div>
     );
   }
@@ -95,6 +138,7 @@ export function ChatPane() {
   const sessions = useDeckStore((state) => state.sessions);
   const selectedSessionId = useDeckStore((state) => state.selectedSessionId);
   const liveText = useDeckStore((state) => state.liveText);
+  const pending = useDeckStore((state) => state.pendingPermissions);
   const session = selectedSession(sessions, selectedSessionId);
   const [draft, setDraft] = useState("");
   const visible = useMemo(() => sessionEvents(events, selectedSessionId), [events, selectedSessionId]);
@@ -129,6 +173,7 @@ export function ChatPane() {
   }
 
   const streaming = liveText[session.id] ?? "";
+  const sessionPending = pending.filter((item) => item.sessionId === session.id);
 
   return (
     <main className="flex min-w-0 flex-1 flex-col">
@@ -139,7 +184,29 @@ export function ChatPane() {
       ) : null}
       <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
         {visible.map((event) => (
-          <EventView event={event} key={event.id} />
+          <EventView event={event} key={event.id} sessionId={session.id} />
+        ))}
+        {sessionPending.map((item) => (
+          <div className="w-full max-w-xl rounded-lg border border-amber-500/40 bg-amber-950/40 p-3 text-sm" key={item.requestId}>
+            <p className="font-medium">Allow {item.action}?</p>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button
+                onClick={() => void client.request("permission_response", { requestId: item.requestId, allow: false })}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Deny
+              </Button>
+              <Button
+                onClick={() => void client.request("permission_response", { requestId: item.requestId, allow: true })}
+                size="sm"
+                type="button"
+              >
+                Allow
+              </Button>
+            </div>
+          </div>
         ))}
         {streaming.length > 0 && session.status === "running" ? (
           <div className="max-w-[80%] rounded-2xl border border-dashed border-border px-3 py-2 text-sm">

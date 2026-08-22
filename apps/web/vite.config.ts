@@ -10,6 +10,12 @@ function agentdeckConfigPlugin(): Plugin {
   return {
     name: "agentdeck-config",
     configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.url === "/phone" || req.url === "/phone/") {
+          req.url = "/index.html";
+        }
+        next();
+      });
       server.middlewares.use("/__agentdeck/config", (_req, res) => {
         const configFile = path.join(os.homedir(), ".agentdeck", "config.json");
         try {

@@ -1,0 +1,9 @@
+{
+  "name": "@agentdeck/relay",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo 'relay is empty until Phase 7'"
+  }
+}

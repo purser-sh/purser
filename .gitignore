@@ -1,0 +1,13 @@
+node_modules
+dist
+.turbo
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+*.db
+*.db-wal
+*.db-shm
+coverage
+.vite

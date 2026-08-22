@@ -1,0 +1,15 @@
+{
+  "name": "@agentdeck/runner",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo 'runner is not started yet'"
+  },
+  "dependencies": {
+    "@agentdeck/adapters": "workspace:*",
+    "@agentdeck/db": "workspace:*",
+    "@agentdeck/protocol": "workspace:*",
+    "@agentdeck/voice": "workspace:*"
+  }
+}

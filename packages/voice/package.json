@@ -1,0 +1,19 @@
+{
+  "name": "@agentdeck/voice",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentdeck/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

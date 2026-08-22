@@ -148,3 +148,50 @@ export type TtsSpeakPayload = z.infer<typeof TtsSpeakPayloadSchema>;
 
 export const TtsStopPayloadSchema = z.object({}).strict();
 export type TtsStopPayload = z.infer<typeof TtsStopPayloadSchema>;
+
+export const DiffResponsePayloadSchema = z
+  .object({
+    sessionId: IdSchema,
+    path: z.string().min(1),
+    approve: z.boolean(),
+  })
+  .strict();
+export type DiffResponsePayload = z.infer<typeof DiffResponsePayloadSchema>;
+
+export const UpsertProviderConfigPayloadSchema = z
+  .object({
+    id: IdSchema.optional(),
+    providerId: z.string().min(1),
+    label: z.string().min(1),
+    baseUrl: z.string().min(1).nullable(),
+    authMode: z.enum(["cli_login", "keychain", "none"]),
+    settings: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+export type UpsertProviderConfigPayload = z.infer<typeof UpsertProviderConfigPayloadSchema>;
+
+export const UpsertVoiceProfilePayloadSchema = z
+  .object({
+    id: IdSchema.optional(),
+    name: z.string().min(1),
+    wakeWord: z.string().min(1).nullable(),
+    sttProvider: z.string().min(1),
+    ttsProvider: z.string().min(1),
+    voiceId: z.string().min(1).nullable(),
+    speed: z.number().positive(),
+    language: z.string().min(1),
+    personaPrompt: z.string(),
+    verbosity: z.enum(["full", "summary", "ack_only"]),
+    interruptOnSpeech: z.boolean(),
+    isDefault: z.boolean(),
+  })
+  .strict();
+export type UpsertVoiceProfilePayload = z.infer<typeof UpsertVoiceProfilePayloadSchema>;
+
+export const PairRelayPayloadSchema = z
+  .object({
+    relayUrl: z.string().min(1),
+    code: z.string().min(4),
+  })
+  .strict();
+export type PairRelayPayload = z.infer<typeof PairRelayPayloadSchema>;

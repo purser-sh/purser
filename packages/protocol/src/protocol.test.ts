@@ -109,6 +109,36 @@ const clientMessages: ClientMessage[] = [
   { id: "c18", type: "voice_stop", payload: {} },
   { id: "c19", type: "tts_speak", payload: { text: "hello" } },
   { id: "c20", type: "tts_stop", payload: {} },
+  { id: "c21", type: "diff_response", payload: { sessionId: "ses_1", path: "README.md", approve: true } },
+  {
+    id: "c22",
+    type: "upsert_provider_config",
+    payload: {
+      providerId: "grok",
+      label: "Grok",
+      baseUrl: "https://api.x.ai/v1",
+      authMode: "keychain",
+      settings: {},
+    },
+  },
+  {
+    id: "c23",
+    type: "upsert_voice_profile",
+    payload: {
+      name: "Babu",
+      wakeWord: "babu",
+      sttProvider: "openai",
+      ttsProvider: "browser",
+      voiceId: null,
+      speed: 1,
+      language: "en",
+      personaPrompt: "",
+      verbosity: "summary",
+      interruptOnSpeech: true,
+      isDefault: true,
+    },
+  },
+  { id: "c24", type: "pair_relay", payload: { relayUrl: "ws://127.0.0.1:7430", code: "ABCD12" } },
 ];
 
 const emptyState = {
@@ -232,6 +262,11 @@ const serverMessages: ServerMessage[] = [
     payload: { pcm16Base64: "AA==", sampleRate: 16000 },
   },
   { id: "s12", type: "error", payload: { message: "unauthorized", code: "auth" } },
+  {
+    id: "s13",
+    type: "relay_status",
+    payload: { connected: true, relayUrl: "ws://127.0.0.1:7430", code: "ABCD12" },
+  },
 ];
 
 describe("AgentEventSchema", () => {

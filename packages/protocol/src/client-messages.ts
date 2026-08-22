@@ -20,6 +20,10 @@ import {
   VoiceAudioChunkPayloadSchema,
   VoiceStartPayloadSchema,
   VoiceStopPayloadSchema,
+  DiffResponsePayloadSchema,
+  UpsertProviderConfigPayloadSchema,
+  UpsertVoiceProfilePayloadSchema,
+  PairRelayPayloadSchema,
 } from "./client-payloads.ts";
 import { IdSchema } from "./primitives.ts";
 
@@ -83,6 +87,16 @@ export const ClientVoiceAudioChunkMessageSchema = clientFrame(
 export const ClientVoiceStopMessageSchema = clientFrame("voice_stop", VoiceStopPayloadSchema);
 export const ClientTtsSpeakMessageSchema = clientFrame("tts_speak", TtsSpeakPayloadSchema);
 export const ClientTtsStopMessageSchema = clientFrame("tts_stop", TtsStopPayloadSchema);
+export const ClientDiffResponseMessageSchema = clientFrame("diff_response", DiffResponsePayloadSchema);
+export const ClientUpsertProviderConfigMessageSchema = clientFrame(
+  "upsert_provider_config",
+  UpsertProviderConfigPayloadSchema,
+);
+export const ClientUpsertVoiceProfileMessageSchema = clientFrame(
+  "upsert_voice_profile",
+  UpsertVoiceProfilePayloadSchema,
+);
+export const ClientPairRelayMessageSchema = clientFrame("pair_relay", PairRelayPayloadSchema);
 
 export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientHelloMessageSchema,
@@ -105,6 +119,10 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientVoiceStopMessageSchema,
   ClientTtsSpeakMessageSchema,
   ClientTtsStopMessageSchema,
+  ClientDiffResponseMessageSchema,
+  ClientUpsertProviderConfigMessageSchema,
+  ClientUpsertVoiceProfileMessageSchema,
+  ClientPairRelayMessageSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;

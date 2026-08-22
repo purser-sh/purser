@@ -93,6 +93,10 @@ export {
   VoiceStopPayloadSchema,
   TtsSpeakPayloadSchema,
   TtsStopPayloadSchema,
+  DiffResponsePayloadSchema,
+  UpsertProviderConfigPayloadSchema,
+  UpsertVoiceProfilePayloadSchema,
+  PairRelayPayloadSchema,
   type HelloPayload,
   type GetStatePayload,
   type CreateWorkspacePayload,
@@ -113,6 +117,10 @@ export {
   type VoiceStopPayload,
   type TtsSpeakPayload,
   type TtsStopPayload,
+  type DiffResponsePayload,
+  type UpsertProviderConfigPayload,
+  type UpsertVoiceProfilePayload,
+  type PairRelayPayload,
 } from "./client-payloads.ts";
 
 export {
@@ -131,6 +139,7 @@ export {
   TranscriptFinalPayloadSchema,
   TtsAudioChunkPayloadSchema,
   ErrorPayloadSchema,
+  RelayStatusPayloadSchema,
   type StatePayload,
   type WorkspaceCreatedPayload,
   type SessionCreatedPayload,
@@ -146,6 +155,7 @@ export {
   type TranscriptFinalPayload,
   type TtsAudioChunkPayload,
   type ErrorPayload,
+  type RelayStatusPayload,
 } from "./server-payloads.ts";
 
 export { FrameEnvelopeSchema, type FrameEnvelope } from "./envelope.ts";

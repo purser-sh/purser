@@ -7,6 +7,8 @@ export const KNOWN_PROVIDER_IDS = [
   "cursor_agent",
   "gemini_cli",
   "generic_llm",
+  "ollama",
+  "grok",
   "perplexity",
 ] as const;
 

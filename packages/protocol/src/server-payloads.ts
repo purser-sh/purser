@@ -138,3 +138,12 @@ export const ErrorPayloadSchema = z
   })
   .strict();
 export type ErrorPayload = z.infer<typeof ErrorPayloadSchema>;
+
+export const RelayStatusPayloadSchema = z
+  .object({
+    connected: z.boolean(),
+    relayUrl: z.string().nullable(),
+    code: z.string().nullable(),
+  })
+  .strict();
+export type RelayStatusPayload = z.infer<typeof RelayStatusPayloadSchema>;

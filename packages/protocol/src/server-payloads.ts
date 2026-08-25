@@ -16,7 +16,7 @@ import {
   SpendSummarySchema,
   TokenCountsSchema,
 } from "./entities.ts";
-import { CostModelSchema, FileEncodingSchema, RunStatusSchema } from "./enums.ts";
+import { CostModelSchema, FileEncodingSchema, RunStatusSchema, TokenizerSourceSchema } from "./enums.ts";
 import { PROTOCOL_VERSION } from "./constants.ts";
 import { AbsolutePathSchema, IdSchema, IsoDateTimeSchema } from "./primitives.ts";
 
@@ -166,6 +166,7 @@ export const PromptEstimatePayloadSchema = z
     compactTokens: z.number().int().nonnegative(),
     savedTokens: z.number().int(),
     notes: z.array(z.string()),
+    source: TokenizerSourceSchema,
   })
   .strict();
 export type PromptEstimatePayload = z.infer<typeof PromptEstimatePayloadSchema>;
@@ -246,6 +247,7 @@ export const RunEstimatePayloadSchema = z
     compactTokens: z.number().int().nonnegative(),
     savedTokens: z.number().int(),
     notes: z.array(z.string()),
+    source: TokenizerSourceSchema,
     costUsdMicros: z.number().int().nullable(),
     costModel: CostModelSchema,
     unpriced: z.boolean(),

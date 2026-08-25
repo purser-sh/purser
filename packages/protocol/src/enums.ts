@@ -48,3 +48,6 @@ export type BudgetAction = z.infer<typeof BudgetActionSchema>;
 
 export const BudgetDecisionSchema = z.enum(["allow_once", "allow_with_headroom", "deny"]);
 export type BudgetDecision = z.infer<typeof BudgetDecisionSchema>;
+
+export const TokenizerSourceSchema = z.enum(["tokenizer", "heuristic"]);
+export type TokenizerSource = z.infer<typeof TokenizerSourceSchema>;

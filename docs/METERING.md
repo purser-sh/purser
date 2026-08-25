@@ -28,8 +28,7 @@ Session `tokensIn` / `tokensOut` are observed counters for the UI. They are not 
 
 ## Honest gaps
 
-- Prompt-coach in the composer is still `ceil(chars/4)` until Phase 4. That is not this ledger.
-- Budget limits (warn / ask / hard stop) are Phase 2.
+- Prompt-coach counts the **composer prompt** with `gpt-tokenizer` (`source: tokenizer`, or `heuristic` if encode throws). That is not the agent loop and not this ledger.
 - OpenAI / unnamed compatible models are unpriced until an official catalog row exists.
 - Perplexity request fees are outside the token ledger.
-- We do not hash-chain the ledger. Audit chaining is Phase 3 and applies to `audit.jsonl`, not this table.
+- We do not hash-chain the ledger. Audit chaining applies to `audit.jsonl`, not this table.

@@ -1,9 +1,12 @@
+import { countTokens, type TokenizerFamily, type TokenizerSource } from "@agentdeck/pricing";
+
 export type PromptEstimate = {
   tokens: number;
   compactText: string;
   compactTokens: number;
   savedTokens: number;
   notes: string[];
+  source: TokenizerSource;
 };
 
 /** Longest first so "could you please" wins over "please". */
@@ -33,12 +36,11 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function estimateTokens(text: string): number {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    return 0;
-  }
-  return Math.ceil(trimmed.length / 4);
+export function estimateTokens(
+  text: string,
+  family: TokenizerFamily = "openai",
+): { value: number; source: TokenizerSource } {
+  return countTokens(text, family);
 }
 
 function preserveCodeFences(text: string): { body: string; fences: string[] } {
@@ -70,12 +72,22 @@ export function compactPrompt(text: string): string {
   return compact.length > 0 ? compact : text.trim();
 }
 
-export function coachPrompt(text: string): PromptEstimate {
-  const tokens = estimateTokens(text);
+function worseSource(a: TokenizerSource, b: TokenizerSource): TokenizerSource {
+  return a === "heuristic" || b === "heuristic" ? "heuristic" : "tokenizer";
+}
+
+export function coachPrompt(text: string, family: TokenizerFamily = "openai"): PromptEstimate {
+  const original = estimateTokens(text, family);
   const compactText = compactPrompt(text);
-  const compactTokens = estimateTokens(compactText);
+  const compact = estimateTokens(compactText, family);
+  const source = worseSource(original.source, compact.source);
+  const tokens = original.value;
+  const compactTokens = compact.value;
   const notes: string[] = [
-    "Estimate is about 4 characters per token. The provider bill can differ.",
+    "This counts the prompt only. Most spend is the agent loop after Send — watch the run spend meter.",
+    source === "tokenizer"
+      ? "Counted with gpt-tokenizer. Anthropic's tokenizer is not installed; Claude prompts still use this encoder. The provider bill can differ."
+      : "Fell back to a character heuristic because the tokenizer failed. The provider bill can differ.",
   ];
   if (compactTokens < tokens) {
     notes.unshift(`Same intent in about ${compactTokens} tokens instead of ${tokens}.`);
@@ -91,5 +103,6 @@ export function coachPrompt(text: string): PromptEstimate {
     compactTokens,
     savedTokens: Math.max(0, tokens - compactTokens),
     notes,
+    source,
   };
 }

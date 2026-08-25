@@ -18,7 +18,7 @@ AgentDeck is a **voice-first coding operations platform**. You talk to it, type 
 | GitHub **and** GitLab | `link_repository` sets `git remote origin`. Clone/push stay on your existing git login. |
 | System folder access | You grant a folder. The **runner** is the only process that may touch disk, and only under `allowedRoots` (default `$HOME`). |
 | Auto-sync from a drop folder (e.g. `~/xyz`) | Watch that folder. Files copy into the workspace `.inbox/`. Watcher refuses the workspace itself so copies cannot loop. |
-| Token limits / shorten before send | Prompt coach: live estimate (~4 characters per token) + a shorter rewrite that keeps code fences. Use it before Send. |
+| Token limits / shorten before send | Prompt coach: live `gpt-tokenizer` count of **this prompt** + a shorter rewrite that keeps code fences. The agent loop is the spend meter after Send. |
 | Production architecture, deploy anywhere, thousands → millions of users | **Two deploy modes.** Today: one laptop companion (SQLite, loopback). Next: regional **cells** (Postgres, object store, isolated runners). A crore of users is many cells, not a bigger SQLite file. |
 
 ### What is already in the market (and what we are not)
@@ -47,7 +47,7 @@ That gap is the product.
 - Voice start/stop, PCM chunks, optional STT/TTS
 - Phone pairing through a relay that stores nothing and, after pair, forwards sealed frames
 - Drop-folder watch → `.inbox/`
-- Token coach in the composer
+- Token coach in the composer (`gpt-tokenizer`; reports `tokenizer` vs last-resort `heuristic`)
 - GitHub/GitLab origin link
 - Clickable file tree + file preview
 - Zod protocol, SQLite persistence, secrets in a 0600 file
@@ -67,8 +67,7 @@ That gap is the product.
 | VS Code / Cursor marketplace extensions | `extensions/vscode/README.md` | Protocol notes only. No `.vsix`. |
 | Hosted HTTP control plane | `packages/integrations/src/control-plane.ts` | Types, scale gates, isolation rules, tenant hashing. No public API server. |
 | Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `AGENTDECK_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
-| Exact provider tokenizers | `packages/prompt-coach` | Heuristic (`ceil(chars/4)`). The bill is still the provider’s. Ledger estimates use `gpt-tokenizer`. |
-| Hash-chained audit verify + rotation | `apps/runner/src/audit.ts` | `~/.agentdeck/audit.jsonl` is hash-chained. `bun apps/runner/src/index.ts audit verify`. Set `redactPaths: true` in config to hash companion paths. |
+| Anthropic tokenizer package | `packages/pricing/src/tokenizer.ts` | `gpt-tokenizer` is shipped. `@anthropic-ai/tokenizer` is **not** installed; Claude prompts still use the OpenAI encoder. Heuristic `ceil(chars/4)` is last-resort if encode throws. |
 | Packaged desktop binary | Phase 5 | `bun run dev` only. |
 
 **Echo is a fake agent.** If the UI says “You said: …” and proposes `+# echoed` on `README.md`, you are testing the console, not a real model. Switch provider on the right to Claude / Codex / Cursor / Gemini / Grok / Ollama.
@@ -113,7 +112,7 @@ bun run typecheck
 
 **Token coaching**
 
-Type a padded prompt such as `please could you actually just check the code`. The composer shows estimated tokens and **Use shorter prompt**. Code fences are kept. This is a heuristic, not the provider invoice.
+Type a padded prompt such as `please could you actually just check the code`. The composer shows **this prompt’s** token count (`gpt-tokenizer`) and **Use shorter prompt**. Code fences are kept. That number is not the agent loop and not the provider invoice — the run spend meter is.
 
 **GitHub / GitLab**
 
@@ -249,7 +248,7 @@ packages/protocol        zod wire contracts (no any)
 packages/db              sqlite now, postgres schema ready
 packages/adapters        echo / claude / cli / generic LLM / MCP
 packages/voice           VAD + optional OpenAI STT/TTS
-packages/prompt-coach    token estimate + compact rewrite (heuristic until Phase 4)
+packages/prompt-coach    token estimate + compact rewrite (`gpt-tokenizer`; heuristic last-resort)
 packages/pricing         official catalog + integer micro-USD + gpt-tokenizer
 packages/integrations    GitHub/GitLab parse, origin/host guard, pairing, scale gates
 extensions/vscode        IDE bridge contract (no extension code yet)
@@ -430,7 +429,7 @@ Read in this order:
 Sign-off questions:
 
 - Do you accept that **Echo is for wiring**, not the demo of intelligence?
-- Do you accept **heuristic tokens** until we plug a real tokenizer per provider?
+- Do you accept **gpt-tokenizer for every family** until `@anthropic-ai/tokenizer` is installed?
 - Do you accept **folder watch on the laptop only**, never as a cloud `/home` path?
 - Do you accept **cells** as the million-user story, not one SQLite?
 - Should marketplace VS Code/Cursor extensions be the next build, or hosted cells, or more adapters?

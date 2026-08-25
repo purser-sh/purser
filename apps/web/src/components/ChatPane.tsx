@@ -367,11 +367,18 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
                 ) : null}
               </div>
             ) : estimate === null ? (
-              <p>Spend meter · send a run to see live tokens. Prompt coach still estimates before send.</p>
+              <p>
+                Spend meter · send a run to see live tokens. Prompt coach counts this prompt only; most spend is the
+                agent loop.
+              </p>
             ) : (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <p>
-                  <span className="font-medium text-foreground">{estimate.tokens}</span> prompt tokens (coach, not the loop)
+                  <span className="font-medium text-foreground">{estimate.tokens}</span> prompt tokens
+                  <span className="text-muted-foreground">
+                    {" "}
+                    ({estimate.source === "tokenizer" ? "gpt-tokenizer" : "heuristic"} · this prompt only, not the loop)
+                  </span>
                   {estimate.savedTokens > 0 ? (
                     <>
                       {" "}

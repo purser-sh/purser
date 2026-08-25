@@ -822,6 +822,7 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
           compactTokens: coach.compactTokens,
           savedTokens: coach.savedTokens,
           notes: coach.notes,
+          source: coach.source,
           costUsdMicros: spend.costUsdMicros,
           costModel: spend.costModel,
           unpriced: spend.unpriced,

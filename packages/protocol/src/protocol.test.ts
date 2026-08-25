@@ -331,6 +331,7 @@ const serverMessages: ServerMessage[] = [
       compactTokens: 4,
       savedTokens: 8,
       notes: ["removed filler"],
+      source: "tokenizer",
     },
   },
   {
@@ -432,6 +433,7 @@ const serverMessages: ServerMessage[] = [
       compactTokens: 4,
       savedTokens: 4,
       notes: ["removed filler"],
+      source: "tokenizer",
       costUsdMicros: null,
       costModel: "local",
       unpriced: true,

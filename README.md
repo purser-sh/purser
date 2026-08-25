@@ -58,6 +58,7 @@ That gap is the product.
 - Bypass TTL + run cap, non-dismissible banner, bypass tool calls in `audit.jsonl`
 - Token ledger (`token_ledger`, append-only). Grok and Perplexity token rates from official pages (`asOf` 2026-08-25). OpenAI-compatible models stay **unpriced**. Override with `~/.agentdeck/pricing.json`. See [docs/METERING.md](docs/METERING.md).
 - Budget governor: `budgets` table, pre-run / in-flight gates, `spend_update`, warn / ask / hard stop. Protocol version **2**.
+- Hash-chained `~/.agentdeck/audit.jsonl` (0600). Verify with `bun apps/runner/src/index.ts audit verify`. Rotation at 64 MB.
 
 ### Specified, not implemented (review the contract, not a fake stack)
 
@@ -67,7 +68,7 @@ That gap is the product.
 | Hosted HTTP control plane | `packages/integrations/src/control-plane.ts` | Types, scale gates, isolation rules, tenant hashing. No public API server. |
 | Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `AGENTDECK_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
 | Exact provider tokenizers | `packages/prompt-coach` | Heuristic (`ceil(chars/4)`). The bill is still the provider’s. Ledger estimates use `gpt-tokenizer`. |
-| Hash-chained audit verify + rotation | `docs/SECURITY.md`, Phase 3 | Phase 0 writes unchained `~/.agentdeck/audit.jsonl` for bypass events only. Budget overrides are also appended. |
+| Hash-chained audit verify + rotation | `apps/runner/src/audit.ts` | `~/.agentdeck/audit.jsonl` is hash-chained. `bun apps/runner/src/index.ts audit verify`. Set `redactPaths: true` in config to hash companion paths. |
 | Packaged desktop binary | Phase 5 | `bun run dev` only. |
 
 **Echo is a fake agent.** If the UI says “You said: …” and proposes `+# echoed` on `README.md`, you are testing the console, not a real model. Switch provider on the right to Claude / Codex / Cursor / Gemini / Grok / Ollama.
@@ -268,7 +269,7 @@ docs/METERING.md         what each adapter can observe and price
 | Token ledger / pricing | `apps/runner/src/meter.ts`, `packages/pricing`, `docs/METERING.md` |
 | Budget governor | `apps/runner/src/budget.ts` |
 | Secrets | `apps/runner/src/secrets.ts` |
-| Audit (Phase 0 JSONL) | `apps/runner/src/audit.ts` |
+| Audit (hash-chained JSONL) | `apps/runner/src/audit.ts` |
 | Bypass TTL | `apps/runner/src/bypass.ts` |
 | HTTP/WS origin guard | `packages/integrations/src/http-guard.ts` |
 | Pairing + relay seal | `packages/integrations/src/pairing.ts`, `relay-seal.ts` |
@@ -343,7 +344,7 @@ Agent events inside `agent_event`: `session_started`, `text_delta`, `text`, `thi
 | `~/.agentdeck/config.json` | Token, port, allowedRoots (`0600`) |
 | `~/.agentdeck/secrets.json` | Provider API keys |
 | `~/.agentdeck/pricing.json` | Optional catalog overrides (see [docs/METERING.md](docs/METERING.md)) |
-| `~/.agentdeck/logs` | Run logs |
+| `~/.agentdeck/audit.jsonl` | Hash-chained audit log (`0600`). Rotated files `audit-*.jsonl`. |
 | `{workspace}/.inbox/` | Synced drop files |
 | `{workspace}/.agentdeck/worktrees/…` | Isolated git worktree per session when applicable |
 

@@ -76,6 +76,10 @@ function loadState(db: AppDatabase) {
   return decorateState(db);
 }
 
+function writeAudit(ctx: AppContext, event: Parameters<typeof appendAudit>[1]): void {
+  appendAudit(agentdeckDir(), event, { redactPaths: ctx.config.redactPaths === true });
+}
+
 const MAX_FILE_BYTES = 512 * 1024;
 
 export type Client = {
@@ -290,6 +294,13 @@ async function startRunAfterGate(
   const controller = new AbortController();
   ctx.activeRuns.set(run.id, controller);
   broadcast(ctx, { id: replyId, type: "run_started", payload: { runId: run.id, sessionId: run.sessionId } });
+  appendAudit(agentdeckDir(), {
+    ts: new Date().toISOString(),
+    type: "run_started",
+    sessionId: run.sessionId,
+    runId: run.id,
+    workspaceId: refreshed.workspaceId,
+  }, { redactPaths: ctx.config.redactPaths === true });
   void executeRun({
     db: ctx.db,
     sessionId: run.sessionId,
@@ -577,6 +588,11 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         throw new HandlerError("not_found", "run is not active");
       }
       controller.abort();
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "run_cancelled",
+        runId: message.payload.runId,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -586,6 +602,12 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         pending(message.payload.allow);
         ctx.pendingPermissions.delete(message.payload.requestId);
       }
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "permission_response",
+        action: message.payload.allow ? "allow" : "deny",
+        detail: message.payload.requestId,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -636,6 +658,14 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       if (!result.ok) {
         throw new HandlerError("git", result.detail);
       }
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "diff_response",
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        path: message.payload.path,
+        action: message.payload.approve ? "approve" : "reject",
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -643,8 +673,13 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       const stripped = takeApiKeyFromSettings(message.payload.settings);
       if (stripped.apiKey !== null) {
         setSecret(message.payload.providerId, stripped.apiKey);
+        writeAudit(ctx, {
+          ts: new Date().toISOString(),
+          type: "secret_write",
+          providerId: message.payload.providerId,
+        });
       }
-      const config = upsertProviderConfig(ctx.db, {
+      upsertProviderConfig(ctx.db, {
         id: message.payload.id,
         providerId: message.payload.providerId,
         label: message.payload.label,
@@ -652,8 +687,12 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         authMode: message.payload.authMode,
         settings: stripped.settings,
       });
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "provider_config",
+        providerId: message.payload.providerId,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
-      void config;
       return;
     }
     case "upsert_voice_profile": {
@@ -674,6 +713,11 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
           broadcast(ctx, {
             type: "relay_status",
             payload: { connected: true, relayUrl: next.url, code: next.code },
+          });
+          writeAudit(ctx, {
+            ts: new Date().toISOString(),
+            type: "relay_pair",
+            detail: next.url,
           });
         },
         onClose: (next) => {
@@ -801,6 +845,12 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         action: message.payload.action,
         enabled: message.payload.enabled,
       });
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "budget_set",
+        action: message.payload.action,
+        detail: `${message.payload.scope}/${message.payload.window}`,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -808,6 +858,11 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       if (!dbDeleteBudget(ctx.db, message.payload.budgetId)) {
         throw new HandlerError("not_found", "budget not found");
       }
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "budget_delete",
+        detail: message.payload.budgetId,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -820,6 +875,13 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         });
         ctx.pendingBudgets.delete(message.payload.requestId);
       }
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "budget_response",
+        action: message.payload.decision,
+        detail:
+          message.payload.headroomUsdMicros !== undefined ? String(message.payload.headroomUsdMicros) : undefined,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -841,6 +903,12 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       );
       watches.push(watch);
       saveFolderWatches(ctx.db, watches);
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "watch_folder",
+        workspaceId: watch.workspaceId,
+        path: watch.absPath,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -856,6 +924,12 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
           (item) => !(item.workspaceId === message.payload.workspaceId && item.absPath === absPath),
         ),
       );
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "unwatch_folder",
+        workspaceId: message.payload.workspaceId,
+        path: absPath,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -870,6 +944,12 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         throw new HandlerError("git", result.detail);
       }
       updateWorkspace(ctx.db, workspace.id, { gitRemote: parsed.remoteUrl });
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "link_repository",
+        workspaceId: workspace.id,
+        detail: parsed.forge,
+      });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }

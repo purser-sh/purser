@@ -17,6 +17,7 @@ export const RunnerConfigSchema = z
     allowedHosts: z.array(z.string().min(1)).optional(),
     bypassTtlMs: z.number().int().positive().optional(),
     bypassMaxRuns: z.number().int().positive().optional(),
+    redactPaths: z.boolean().optional(),
   })
   .strict();
 

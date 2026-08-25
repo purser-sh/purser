@@ -138,17 +138,15 @@ export async function executeRun(input: {
       }
       if (event.kind === "tool_call") {
         const live = getSession(input.db, input.sessionId);
-        if (live?.permissionMode === "bypass") {
-          appendAudit(agentdeckDir(), {
-            ts: new Date().toISOString(),
-            type: "tool_call",
-            sessionId: input.sessionId,
-            runId: input.runId,
-            toolName: event.name,
-            toolId: event.toolId,
-            bypassed: true,
-          });
-        }
+        appendAudit(agentdeckDir(), {
+          ts: new Date().toISOString(),
+          type: "tool_call",
+          sessionId: input.sessionId,
+          runId: input.runId,
+          toolName: event.name,
+          toolId: event.toolId,
+          bypassed: live?.permissionMode === "bypass",
+        });
       }
       if (event.kind === "session_started" && session.providerSessionId === null) {
         updateSession(input.db, input.sessionId, { providerSessionId: event.providerSessionId });
@@ -264,6 +262,14 @@ export async function executeRun(input: {
     finalizeRunLedger(input.db, latest, input.runId, observedText);
     input.onSpendUpdate?.(buildSpendUpdate(input.db, latest, input.runId, startedAt, extraUsdByBudget), true);
     finishRun(input.db, input.runId, runStatus === "ok" ? "ok" : runStatus, runError);
+    appendAudit(agentdeckDir(), {
+      ts: new Date().toISOString(),
+      type: "run_finished",
+      sessionId: input.sessionId,
+      runId: input.runId,
+      outcome: runStatus,
+      detail: runError ?? undefined,
+    });
     updateSession(input.db, input.sessionId, { status: runStatus === "error" ? "error" : "idle" });
     const finished = {
       type: "run_finished" as const,

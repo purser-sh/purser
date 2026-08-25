@@ -74,7 +74,7 @@ const clientMessages: ClientMessage[] = [
   {
     id: "c1",
     type: "hello",
-    payload: { token: "secret", clientVersion: "0.0.1", protocolVersion: 1 },
+    payload: { token: "secret", clientVersion: "0.0.1", protocolVersion: 2 },
   },
   { id: "c2", type: "get_state", payload: {} },
   {
@@ -142,6 +142,27 @@ const clientMessages: ClientMessage[] = [
   },
   { id: "c24", type: "pair_relay", payload: { relayUrl: "ws://127.0.0.1:7430", code: "ABCDEFGH" } },
   { id: "c25", type: "estimate_prompt", payload: { text: "please refactor this module" } },
+  { id: "c25b", type: "estimate_run", payload: { sessionId: "ses_1", text: "please refactor this module" } },
+  { id: "c25c", type: "get_spend", payload: { scope: "global", window: "day", groupBy: "provider" } },
+  {
+    id: "c25d",
+    type: "set_budget",
+    payload: {
+      scope: "global",
+      scopeId: null,
+      window: "day",
+      limitUsdMicros: 5_000_000,
+      limitTokens: null,
+      action: "hard_stop",
+      enabled: true,
+    },
+  },
+  { id: "c25e", type: "delete_budget", payload: { budgetId: "bud_1" } },
+  {
+    id: "c25f",
+    type: "budget_response",
+    payload: { requestId: "br_1", decision: "allow_once" },
+  },
   {
     id: "c26",
     type: "watch_folder",
@@ -216,6 +237,16 @@ const emptyState = {
   ],
   settings: [{ key: "theme", value: "dark" }],
   folderWatches: [],
+  budgets: [],
+  protocolVersion: 2 as const,
+  spendSummary: {
+    generatedAt: NOW,
+    today: { tokens: 0, costUsdMicros: null },
+    month: { tokens: 0, costUsdMicros: null },
+    unpricedModels: [],
+    catalogStale: false,
+    byWorkspace: [],
+  },
 };
 
 const serverMessages: ServerMessage[] = [
@@ -310,6 +341,101 @@ const serverMessages: ServerMessage[] = [
       sourcePath: "/home/aksingh/inbox/a.ts",
       destPath: ".inbox/a.ts",
       action: "added",
+    },
+  },
+  {
+    id: "s16",
+    type: "spend_update",
+    payload: {
+      runId: "run_1",
+      sessionId: "ses_1",
+      workspaceId: "ws_1",
+      tokens: { input: 10, output: 4, cacheRead: 0, cacheWrite: 0 },
+      costUsdMicros: null,
+      costModel: "local",
+      source: "estimated",
+      level: "info",
+      budgets: [],
+    },
+  },
+  {
+    id: "s17",
+    type: "budget_request",
+    payload: {
+      requestId: "br_1",
+      runId: "run_1",
+      sessionId: "ses_1",
+      budget: {
+        budgetId: "bud_1",
+        scope: "global",
+        window: "day",
+        spent: 10,
+        limit: 10,
+        pct: 100,
+        action: "ask",
+        unit: "tokens",
+      },
+    },
+  },
+  {
+    id: "s18",
+    type: "budget_exceeded",
+    payload: {
+      runId: "run_1",
+      sessionId: "ses_1",
+      budget: {
+        budgetId: "bud_1",
+        scope: "global",
+        window: "day",
+        spent: 11,
+        limit: 10,
+        pct: 110,
+        action: "hard_stop",
+        unit: "tokens",
+      },
+      outcome: "stopped",
+    },
+  },
+  {
+    id: "s19",
+    type: "spend_report",
+    payload: {
+      rows: [
+        {
+          groupKey: "echo",
+          inputTokens: 10,
+          outputTokens: 4,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsdMicros: null,
+        },
+      ],
+      totals: {
+        groupKey: "totals",
+        inputTokens: 10,
+        outputTokens: 4,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        costUsdMicros: null,
+      },
+      generatedAt: NOW,
+      unpricedModels: ["echo-v1"],
+    },
+  },
+  {
+    id: "s20",
+    type: "run_estimate",
+    payload: {
+      sessionId: "ses_1",
+      tokens: 8,
+      compactText: "refactor module",
+      compactTokens: 4,
+      savedTokens: 4,
+      notes: ["removed filler"],
+      costUsdMicros: null,
+      costModel: "local",
+      unpriced: true,
+      budgets: [],
     },
   },
 ];
@@ -412,5 +538,18 @@ describe("parse helpers", () => {
   test("parseServerMessage accepts state", () => {
     const parsed = parseServerMessage(serverMessages[0]);
     expect(parsed.type).toBe("state");
+  });
+
+  test("hello still parses an older protocolVersion so the runner can reject it with a typed error", () => {
+    const parsed = ClientMessageSchema.parse({
+      id: "old",
+      type: "hello",
+      payload: { token: "secret", clientVersion: "0.0.1", protocolVersion: 1 },
+    });
+    expect(parsed.type).toBe("hello");
+    if (parsed.type !== "hello") {
+      throw new Error("expected hello");
+    }
+    expect(parsed.payload.protocolVersion).toBe(1);
   });
 });

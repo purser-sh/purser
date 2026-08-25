@@ -10,7 +10,6 @@ import {
   getWorkspace,
   insertSession,
   insertWorkspace,
-  loadState,
   listFolderWatches,
   expandHome,
   saveFolderWatches,
@@ -19,6 +18,8 @@ import {
   updateWorkspace,
   upsertProviderConfig,
   upsertVoiceProfile,
+  upsertBudget,
+  deleteBudget as dbDeleteBudget,
   type AppDatabase,
 } from "@agentdeck/db";
 import {
@@ -27,9 +28,11 @@ import {
   type ClientMessage,
   type ServerMessage,
   type Session,
+  type BudgetDecision,
+  type BudgetStatus,
 } from "@agentdeck/protocol";
 import type { RunnerConfig } from "./config.ts";
-import { resolvedHosts, resolvedOrigins } from "./config.ts";
+import { agentdeckDir, resolvedHosts, resolvedOrigins } from "./config.ts";
 import { detectGitRemote, setOriginRemote } from "./git.ts";
 import {
   assertAllowed,
@@ -60,6 +63,18 @@ import {
   expireBypassIfConsumed,
   refreshBypass,
 } from "./bypass.ts";
+import {
+  buildSpendReport,
+  decorateState,
+  estimateRunSpend,
+  preRunGate,
+  withLedgerLock,
+} from "./budget.ts";
+import { appendAudit } from "./audit.ts";
+
+function loadState(db: AppDatabase) {
+  return decorateState(db);
+}
 
 const MAX_FILE_BYTES = 512 * 1024;
 
@@ -76,6 +91,7 @@ export type AppContext = {
   clients: Set<Client>;
   activeRuns: Map<string, AbortController>;
   pendingPermissions: Map<string, (allow: boolean) => void>;
+  pendingBudgets: Map<string, (reply: { decision: BudgetDecision; headroomUsdMicros?: number }) => void>;
   relay: RelayHandle | null;
   voice: VoiceSession | null;
   folderWatch: FolderWatchService | null;
@@ -183,9 +199,94 @@ function startRun(ctx: AppContext, sessionId: string, prompt: string, replyId: s
   if (existing === undefined) {
     throw new HandlerError("not_found", "session not found");
   }
+  void startRunAfterGate(ctx, existing, prompt, replyId);
+}
+
+function askBudgetDecision(
+  ctx: AppContext,
+  controller: AbortController,
+  request: { requestId: string; runId: string | null; sessionId: string; status: BudgetStatus },
+): Promise<{ decision: BudgetDecision; headroomUsdMicros?: number }> {
+  return new Promise((resolve) => {
+    ctx.pendingBudgets.set(request.requestId, resolve);
+    broadcast(ctx, {
+      type: "budget_request",
+      payload: {
+        requestId: request.requestId,
+        runId: request.runId,
+        sessionId: request.sessionId,
+        budget: request.status,
+      },
+    });
+    controller.signal.addEventListener("abort", () => {
+      ctx.pendingBudgets.delete(request.requestId);
+      resolve({ decision: "deny" });
+    });
+  });
+}
+
+async function startRunAfterGate(
+  ctx: AppContext,
+  existing: Session,
+  prompt: string,
+  replyId: string,
+): Promise<void> {
   const refreshed = refreshBypass(ctx.db, existing);
+  const extraUsdByBudget = new Map<string, number>();
+  const preController = new AbortController();
+  const gate = withLedgerLock(ctx.db, () => preRunGate(ctx.db, refreshed));
+  if (gate.kind === "hard_stop") {
+    broadcast(ctx, {
+      id: replyId,
+      type: "budget_exceeded",
+      payload: { runId: null, sessionId: refreshed.id, budget: gate.status, outcome: "stopped" },
+    });
+    broadcast(ctx, {
+      id: replyId,
+      type: "error",
+      payload: { message: "budget hard stop: this run was not started", code: "budget" },
+    });
+    return;
+  }
+  if (gate.kind === "ask") {
+    const requestId = crypto.randomUUID();
+    const reply = await askBudgetDecision(ctx, preController, {
+      requestId,
+      runId: null,
+      sessionId: refreshed.id,
+      status: gate.status,
+    });
+    if (reply.decision === "deny") {
+      broadcast(ctx, {
+        id: replyId,
+        type: "budget_exceeded",
+        payload: { runId: null, sessionId: refreshed.id, budget: gate.status, outcome: "stopped" },
+      });
+      return;
+    }
+    if (reply.decision === "allow_with_headroom" && reply.headroomUsdMicros !== undefined) {
+      extraUsdByBudget.set(gate.status.budgetId, reply.headroomUsdMicros);
+    }
+    appendAudit(agentdeckDir(), {
+      ts: new Date().toISOString(),
+      type: "budget_override",
+      sessionId: refreshed.id,
+      action: reply.decision,
+      detail: reply.headroomUsdMicros !== undefined ? String(reply.headroomUsdMicros) : undefined,
+    });
+    broadcast(ctx, {
+      type: "budget_exceeded",
+      payload: { runId: null, sessionId: refreshed.id, budget: gate.status, outcome: "overridden" },
+    });
+  }
+  if (gate.kind === "warn") {
+    broadcast(ctx, {
+      type: "budget_exceeded",
+      payload: { runId: null, sessionId: refreshed.id, budget: gate.status, outcome: "warned" },
+    });
+  }
   consumeBypassRun(ctx.db, refreshed);
-  const run = prepareRun(ctx.db, sessionId, prompt);
+  const run = prepareRun(ctx.db, refreshed.id, prompt);
   const controller = new AbortController();
   ctx.activeRuns.set(run.id, controller);
   broadcast(ctx, { id: replyId, type: "run_started", payload: { runId: run.id, sessionId: run.sessionId } });
@@ -195,7 +296,14 @@ function startRun(ctx: AppContext, sessionId: string, prompt: string, replyId: s
     runId: run.id,
     prompt,
     signal: controller.signal,
+    extraUsdByBudget,
+    onHardStop: () => controller.abort(),
     broadcast: (payload) => broadcast(ctx, payload),
+    onSpendUpdate: (payload, terminal) => {
+      broadcast(ctx, { type: "spend_update", payload });
+      void terminal;
+    },
+    askBudget: (request) => askBudgetDecision(ctx, controller, { ...request, runId: run.id, sessionId: run.sessionId }),
     askPermission: (request) =>
       new Promise((resolve) => {
         ctx.pendingPermissions.set(request.requestId, resolve);
@@ -322,7 +430,10 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         throw new HandlerError("unauthorized", "invalid token");
       }
       if (message.payload.protocolVersion !== PROTOCOL_VERSION) {
-        throw new HandlerError("protocol", `unsupported protocol version ${message.payload.protocolVersion}`);
+        throw new HandlerError(
+          "protocol_version",
+          `runner speaks protocol ${PROTOCOL_VERSION}; this client sent ${message.payload.protocolVersion}`,
+        );
       }
       client.authed = true;
       await seedDefaults(ctx.db);
@@ -648,6 +759,68 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
     }
     case "estimate_prompt": {
       send(client, { id: message.id, type: "prompt_estimate", payload: coachPrompt(message.payload.text) });
+      return;
+    }
+    case "estimate_run": {
+      const session = getSession(ctx.db, message.payload.sessionId);
+      if (session === undefined) {
+        throw new HandlerError("not_found", "session not found");
+      }
+      const coach = coachPrompt(message.payload.text);
+      const spend = estimateRunSpend(ctx.db, session, message.payload.text);
+      send(client, {
+        id: message.id,
+        type: "run_estimate",
+        payload: {
+          sessionId: session.id,
+          tokens: coach.tokens,
+          compactText: coach.compactText,
+          compactTokens: coach.compactTokens,
+          savedTokens: coach.savedTokens,
+          notes: coach.notes,
+          costUsdMicros: spend.costUsdMicros,
+          costModel: spend.costModel,
+          unpriced: spend.unpriced,
+          budgets: spend.budgets,
+        },
+      });
+      return;
+    }
+    case "get_spend": {
+      send(client, { id: message.id, type: "spend_report", payload: buildSpendReport(ctx.db, message.payload) });
+      return;
+    }
+    case "set_budget": {
+      upsertBudget(ctx.db, {
+        id: message.payload.id,
+        scope: message.payload.scope,
+        scopeId: message.payload.scopeId,
+        window: message.payload.window,
+        limitUsdMicros: message.payload.limitUsdMicros,
+        limitTokens: message.payload.limitTokens,
+        action: message.payload.action,
+        enabled: message.payload.enabled,
+      });
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "delete_budget": {
+      if (!dbDeleteBudget(ctx.db, message.payload.budgetId)) {
+        throw new HandlerError("not_found", "budget not found");
+      }
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "budget_response": {
+      const pending = ctx.pendingBudgets.get(message.payload.requestId);
+      if (pending !== undefined) {
+        pending({
+          decision: message.payload.decision,
+          headroomUsdMicros: message.payload.headroomUsdMicros,
+        });
+        ctx.pendingBudgets.delete(message.payload.requestId);
+      }
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
     case "watch_folder": {

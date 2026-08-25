@@ -53,10 +53,11 @@ That gap is the product.
 - Zod protocol, SQLite persistence, secrets in a 0600 file
 - Websocket Origin/Host allowlists; non-browser upgrades require the runner token
 - `/__agentdeck/config` same-origin only in Vite development; production 404
-- `/health` returns `{ ok: true, protocolVersion: 1 }` only
+- `/health` returns `{ ok: true, protocolVersion: 2 }` only
 - Pairing codes: Crockford ≥ 8 chars, TTL 120s, single use, rate limits
 - Bypass TTL + run cap, non-dismissible banner, bypass tool calls in `audit.jsonl`
 - Token ledger (`token_ledger`, append-only). Grok and Perplexity token rates from official pages (`asOf` 2026-08-25). OpenAI-compatible models stay **unpriced**. Override with `~/.agentdeck/pricing.json`. See [docs/METERING.md](docs/METERING.md).
+- Budget governor: `budgets` table, pre-run / in-flight gates, `spend_update`, warn / ask / hard stop. Protocol version **2**.
 
 ### Specified, not implemented (review the contract, not a fake stack)
 
@@ -66,8 +67,7 @@ That gap is the product.
 | Hosted HTTP control plane | `packages/integrations/src/control-plane.ts` | Types, scale gates, isolation rules, tenant hashing. No public API server. |
 | Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `AGENTDECK_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
 | Exact provider tokenizers | `packages/prompt-coach` | Heuristic (`ceil(chars/4)`). The bill is still the provider’s. Ledger estimates use `gpt-tokenizer`. |
-| Budget governor (warn / ask / hard stop) | Phase 2 | Ledger exists. No spend caps, no `spend_update`. |
-| Hash-chained audit verify + rotation | `docs/SECURITY.md`, Phase 3 | Phase 0 writes unchained `~/.agentdeck/audit.jsonl` for bypass events only. |
+| Hash-chained audit verify + rotation | `docs/SECURITY.md`, Phase 3 | Phase 0 writes unchained `~/.agentdeck/audit.jsonl` for bypass events only. Budget overrides are also appended. |
 | Packaged desktop binary | Phase 5 | `bun run dev` only. |
 
 **Echo is a fake agent.** If the UI says “You said: …” and proposes `+# echoed` on `README.md`, you are testing the console, not a real model. Switch provider on the right to Claude / Codex / Cursor / Gemini / Grok / Ollama.
@@ -266,6 +266,7 @@ docs/METERING.md         what each adapter can observe and price
 | Adapters | `apps/runner/src/registry.ts`, `packages/adapters` |
 | Persistence | `packages/db/src/schema.sqlite.ts`, `queries.ts` |
 | Token ledger / pricing | `apps/runner/src/meter.ts`, `packages/pricing`, `docs/METERING.md` |
+| Budget governor | `apps/runner/src/budget.ts` |
 | Secrets | `apps/runner/src/secrets.ts` |
 | Audit (Phase 0 JSONL) | `apps/runner/src/audit.ts` |
 | Bypass TTL | `apps/runner/src/bypass.ts` |
@@ -281,7 +282,7 @@ docs/METERING.md         what each adapter can observe and price
 
 ## 6. Protocol (clients and runner speak this)
 
-Every frame: `{ id, type, payload }`. Zod `.strict()` — extra keys fail. Protocol version is `1` on `hello`.
+Every frame: `{ id, type, payload }`. Zod `.strict()` — extra keys fail. Protocol version is `2` on `hello`. A v1 client gets a typed `protocol_version` error.
 
 ### Client → runner
 
@@ -303,7 +304,9 @@ Every frame: `{ id, type, payload }`. Zod `.strict()` — extra keys fail. Proto
 | `upsert_provider_config` | Labels, base URL, API key (key stripped to secrets file) |
 | `upsert_voice_profile` | STT/TTS persona |
 | `pair_relay` | Phone |
-| `estimate_prompt` | Server-side coach (UI also coaches locally) |
+| `estimate_prompt` | Server-side coach (deprecated; use `estimate_run`) |
+| `estimate_run` | Coach + budget snapshot before send |
+| `get_spend` / `set_budget` / `delete_budget` / `budget_response` | Spend report and budget HITL |
 | `watch_folder` / `unwatch_folder` | Drop-folder sync (`~` allowed, expanded on runner) |
 | `link_repository` | GitHub/GitLab origin URL |
 
@@ -311,7 +314,8 @@ Every frame: `{ id, type, payload }`. Zod `.strict()` — extra keys fail. Proto
 
 | Type | Purpose |
 | --- | --- |
-| `state` | Workspaces, sessions, events, runs, configs, voice, settings, **folderWatches** |
+| `state` | Workspaces, sessions, events, runs, configs, voice, settings, **folderWatches**, **budgets**, **spendSummary**, protocolVersion |
+| `spend_update` / `budget_request` / `budget_exceeded` / `spend_report` / `run_estimate` | Live spend and budget HITL |
 | `workspace_created` / `session_created` | ACKs |
 | `run_started` / `agent_event` / `run_finished` | Streaming run |
 | `permission_request` | Human-in-the-loop |
@@ -328,7 +332,7 @@ Agent events inside `agent_event`: `session_started`, `text_delta`, `text`, `thi
 
 ## 7. Data and secrets
 
-**SQLite** (`~/.agentdeck/agentdeck.sqlite`, WAL): workspaces, sessions, events, runs, provider configs (no raw keys), voice profiles, settings, append-only `token_ledger`. Folder watches are stored under settings key `folder_watches` but **stripped out** of the generic `settings` array in `loadState` so the UI reads `folderWatches` only.
+**SQLite** (`~/.agentdeck/agentdeck.sqlite`, WAL): workspaces, sessions, events, runs, provider configs (no raw keys), voice profiles, settings, append-only `token_ledger`, `budgets`. Folder watches are stored under settings key `folder_watches` but **stripped out** of the generic `settings` array in `loadState` so the UI reads `folderWatches` only. Day/month spend buckets by **run start timestamp** (UTC).
 
 **Postgres schema** exists for cells. It is not live.
 

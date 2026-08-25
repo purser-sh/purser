@@ -122,6 +122,19 @@ export const tokenLedger = sqliteTable(
   ],
 );
 
+export const budgets = sqliteTable("budgets", {
+  id: text("id").primaryKey(),
+  scope: text("scope").notNull(),
+  scopeId: text("scope_id"),
+  window: text("window").notNull(),
+  limitUsdMicros: integer("limit_usd_micros"),
+  limitTokens: integer("limit_tokens"),
+  action: text("action").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
 export const sqliteSchema = {
   workspaces,
   sessions,
@@ -131,4 +144,5 @@ export const sqliteSchema = {
   voiceProfiles,
   settings,
   tokenLedger,
+  budgets,
 };

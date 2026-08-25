@@ -11,6 +11,7 @@ const ctx: AppContext = {
   clients: new Set(),
   activeRuns: new Map(),
   pendingPermissions: new Map(),
+  pendingBudgets: new Map(),
   relay: null,
   voice: null,
   folderWatch: null,

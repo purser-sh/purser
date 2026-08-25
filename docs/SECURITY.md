@@ -24,7 +24,7 @@ Disclosure: there is no published security mailbox yet. Until launch, report iss
 | Non-browser upgrades require `Authorization: Bearer <runner token>` (or `?token=`) when `Origin` is absent | Local pages cannot skip Origin; CLI/VS Code clients must present the token at handshake. Logged as `token-client`. |
 | `hello` token check (timing-safe). Via-relay hello uses the pairing code, not the runner token. | Defence in depth after a successful upgrade. |
 | `/__agentdeck/config` Host + Origin + `Sec-Fetch-Site !== cross-site`, `Cache-Control: no-store`, `Vary: Origin`, `X-Content-Type-Options: nosniff`, no `Access-Control-Allow-Origin`. Mounted only when Vite `mode === 'development'`. Production returns 404. | Token theft from a web page or a production static server. |
-| `/health` returns only `{ ok: true, protocolVersion: 1 }` | Accidental leak of token, roots, or workspace names. |
+| `/health` returns only `{ ok: true, protocolVersion: 2 }` | Accidental leak of token, roots, or workspace names. |
 | Pairing codes: Crockford base32, length ≥ 8 (~40 bits), TTL 120s, single use, max 5 attempts per code, max 20 attempts per source per minute, `timingSafeEqual` via SHA-256 digests. | Relay guessing and reuse. |
 | Relay frame seal: HKDF-SHA-256(pairing code) → AES-256-GCM. | Relay reading protocol payloads (including the runner token on `hello` from the phone path — the phone authenticates with the pairing code, not the runner token). |
 | Bypass: per-session re-confirm (type `bypass` + checkbox), TTL 30 minutes and 10 runs (configurable `bypassTtlMs` / `bypassMaxRuns`), non-dismissible banner, every tool call under bypass appended to `~/.agentdeck/audit.jsonl` with `bypassed: true`. | Accidental god-mode that never expires. |

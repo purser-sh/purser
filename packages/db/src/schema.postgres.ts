@@ -120,6 +120,19 @@ export const tokenLedger = pgTable(
   ],
 );
 
+export const budgets = pgTable("budgets", {
+  id: text("id").primaryKey(),
+  scope: text("scope").notNull(),
+  scopeId: text("scope_id"),
+  window: text("window").notNull(),
+  limitUsdMicros: integer("limit_usd_micros"),
+  limitTokens: integer("limit_tokens"),
+  action: text("action").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
 export const postgresSchema = {
   workspaces,
   sessions,
@@ -129,4 +142,5 @@ export const postgresSchema = {
   voiceProfiles,
   settings,
   tokenLedger,
+  budgets,
 };

@@ -2,6 +2,7 @@ import type { AgentEvent, EventRole, ServerMessage } from "@agentdeck/protocol";
 import {
   finishRun,
   getProviderConfig,
+  getRun,
   getSession,
   getWorkspace,
   insertEvent,
@@ -16,6 +17,13 @@ import { buildExtraPrompt } from "./skills.ts";
 import { appendAudit } from "./audit.ts";
 import { agentdeckDir } from "./config.ts";
 import { finalizeRunLedger, recordUsageEvent } from "./meter.ts";
+import {
+  buildSpendUpdate,
+  createSpendThrottle,
+  inFlightGate,
+  withLedgerLock,
+} from "./budget.ts";
+import type { BudgetDecision, BudgetStatus, SpendUpdatePayload } from "@agentdeck/protocol";
 
 const SKIP_PERSIST = new Set<AgentEvent["kind"]>(["text_delta"]);
 
@@ -46,6 +54,13 @@ export async function executeRun(input: {
   signal: AbortSignal;
   broadcast: RunBroadcast;
   askPermission: AskPermission;
+  extraUsdByBudget?: Map<string, number>;
+  onHardStop?: () => void;
+  askBudget?: (request: { requestId: string; status: BudgetStatus }) => Promise<{
+    decision: BudgetDecision;
+    headroomUsdMicros?: number;
+  }>;
+  onSpendUpdate?: (payload: SpendUpdatePayload, terminal?: boolean) => void;
 }): Promise<void> {
   const session = getSession(input.db, input.sessionId);
   if (session === undefined) {
@@ -72,6 +87,12 @@ export async function executeRun(input: {
   let runError: string | null = null;
   let observedText = input.prompt;
   let liveSession = session;
+  const extraUsdByBudget = input.extraUsdByBudget ?? new Map<string, number>();
+  const asked = new Set<string>();
+  const warned = new Set<string>();
+  const throttle = createSpendThrottle((payload) => input.onSpendUpdate?.(payload, false));
+  const runRow = getRun(input.db, input.runId);
+  const startedAt = runRow === undefined ? new Date() : new Date(runRow.startedAt);
 
   try {
     for await (const event of adapter.run({
@@ -135,11 +156,69 @@ export async function executeRun(input: {
       if (event.kind === "usage") {
         const latest = getSession(input.db, input.sessionId);
         liveSession = latest ?? liveSession;
-        recordUsageEvent(input.db, liveSession, input.runId, event);
-        updateSession(input.db, input.sessionId, {
-          tokensIn: (latest?.tokensIn ?? 0) + (event.inputTokens ?? 0),
-          tokensOut: (latest?.tokensOut ?? 0) + (event.outputTokens ?? 0),
+        const gate = withLedgerLock(input.db, () => {
+          recordUsageEvent(input.db, liveSession, input.runId, event);
+          updateSession(input.db, input.sessionId, {
+            tokensIn: (latest?.tokensIn ?? 0) + (event.inputTokens ?? 0),
+            tokensOut: (latest?.tokensOut ?? 0) + (event.outputTokens ?? 0),
+          });
+          return inFlightGate(input.db, liveSession, startedAt, input.runId, extraUsdByBudget);
         });
+        throttle.push(buildSpendUpdate(input.db, liveSession, input.runId, startedAt, extraUsdByBudget));
+        if (gate.kind === "warn" && !warned.has(gate.status.budgetId)) {
+          warned.add(gate.status.budgetId);
+          input.broadcast({
+            type: "budget_exceeded",
+            payload: {
+              runId: input.runId,
+              sessionId: input.sessionId,
+              budget: gate.status,
+              outcome: "warned",
+            },
+          });
+        }
+        if (gate.kind === "ask" && input.askBudget !== undefined && !asked.has(gate.status.budgetId)) {
+          asked.add(gate.status.budgetId);
+          const requestId = crypto.randomUUID();
+          const reply = await input.askBudget({ requestId, status: gate.status });
+          if (reply.decision === "deny") {
+            input.broadcast({
+              type: "budget_exceeded",
+              payload: {
+                runId: input.runId,
+                sessionId: input.sessionId,
+                budget: gate.status,
+                outcome: "stopped",
+              },
+            });
+            input.onHardStop?.();
+          } else {
+            if (reply.decision === "allow_with_headroom" && reply.headroomUsdMicros !== undefined) {
+              extraUsdByBudget.set(gate.status.budgetId, (extraUsdByBudget.get(gate.status.budgetId) ?? 0) + reply.headroomUsdMicros);
+            }
+            input.broadcast({
+              type: "budget_exceeded",
+              payload: {
+                runId: input.runId,
+                sessionId: input.sessionId,
+                budget: gate.status,
+                outcome: "overridden",
+              },
+            });
+          }
+        }
+        if (gate.kind === "hard_stop") {
+          input.broadcast({
+            type: "budget_exceeded",
+            payload: {
+              runId: input.runId,
+              sessionId: input.sessionId,
+              budget: gate.status,
+              outcome: "stopped",
+            },
+          });
+          input.onHardStop?.();
+        }
       }
       if (event.kind === "done") {
         runStatus = event.status;
@@ -183,6 +262,7 @@ export async function executeRun(input: {
   } finally {
     const latest = getSession(input.db, input.sessionId) ?? liveSession;
     finalizeRunLedger(input.db, latest, input.runId, observedText);
+    input.onSpendUpdate?.(buildSpendUpdate(input.db, latest, input.runId, startedAt, extraUsdByBudget), true);
     finishRun(input.db, input.runId, runStatus === "ok" ? "ok" : runStatus, runError);
     updateSession(input.db, input.sessionId, { status: runStatus === "error" ? "error" : "idle" });
     const finished = {

@@ -25,6 +25,11 @@ import {
   UpsertVoiceProfilePayloadSchema,
   PairRelayPayloadSchema,
   EstimatePromptPayloadSchema,
+  EstimateRunPayloadSchema,
+  GetSpendPayloadSchema,
+  SetBudgetPayloadSchema,
+  DeleteBudgetPayloadSchema,
+  BudgetResponsePayloadSchema,
   WatchFolderPayloadSchema,
   UnwatchFolderPayloadSchema,
   LinkRepositoryPayloadSchema,
@@ -102,6 +107,11 @@ export const ClientUpsertVoiceProfileMessageSchema = clientFrame(
 );
 export const ClientPairRelayMessageSchema = clientFrame("pair_relay", PairRelayPayloadSchema);
 export const ClientEstimatePromptMessageSchema = clientFrame("estimate_prompt", EstimatePromptPayloadSchema);
+export const ClientEstimateRunMessageSchema = clientFrame("estimate_run", EstimateRunPayloadSchema);
+export const ClientGetSpendMessageSchema = clientFrame("get_spend", GetSpendPayloadSchema);
+export const ClientSetBudgetMessageSchema = clientFrame("set_budget", SetBudgetPayloadSchema);
+export const ClientDeleteBudgetMessageSchema = clientFrame("delete_budget", DeleteBudgetPayloadSchema);
+export const ClientBudgetResponseMessageSchema = clientFrame("budget_response", BudgetResponsePayloadSchema);
 export const ClientWatchFolderMessageSchema = clientFrame("watch_folder", WatchFolderPayloadSchema);
 export const ClientUnwatchFolderMessageSchema = clientFrame("unwatch_folder", UnwatchFolderPayloadSchema);
 export const ClientLinkRepositoryMessageSchema = clientFrame("link_repository", LinkRepositoryPayloadSchema);
@@ -132,6 +142,11 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientUpsertVoiceProfileMessageSchema,
   ClientPairRelayMessageSchema,
   ClientEstimatePromptMessageSchema,
+  ClientEstimateRunMessageSchema,
+  ClientGetSpendMessageSchema,
+  ClientSetBudgetMessageSchema,
+  ClientDeleteBudgetMessageSchema,
+  ClientBudgetResponseMessageSchema,
   ClientWatchFolderMessageSchema,
   ClientUnwatchFolderMessageSchema,
   ClientLinkRepositoryMessageSchema,

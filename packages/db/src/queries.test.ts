@@ -11,6 +11,8 @@ import {
   saveFolderWatches,
   seedDefaults,
   updateSession,
+  upsertBudget,
+  listBudgets,
 } from "./queries.ts";
 
 function openMemory() {
@@ -117,5 +119,29 @@ describe("sqlite core", () => {
     expect(listLedgerByRun(db, run.id)).toHaveLength(1);
     expect(() => db.$client.exec("UPDATE token_ledger SET source = 'x'")).toThrow(/append-only/);
     expect(() => db.$client.exec("DELETE FROM token_ledger")).toThrow(/append-only/);
+  });
+
+  test("budgets persist outside the settings array", async () => {
+    const db = openMemory();
+    await seedDefaults(db);
+    const workspace = insertWorkspace(db, {
+      name: "AgentDeck",
+      absPath: "/home/aksingh/AgentDeck",
+      gitRemote: null,
+    });
+    upsertBudget(db, {
+      scope: "workspace",
+      scopeId: workspace.id,
+      window: "day",
+      limitUsdMicros: null,
+      limitTokens: 1000,
+      action: "hard_stop",
+      enabled: true,
+    });
+    expect(listBudgets(db)).toHaveLength(1);
+    const state = loadState(db);
+    expect(state.budgets).toHaveLength(1);
+    expect(state.settings.some((setting) => setting.key === "budgets")).toBe(false);
+    expect(state.protocolVersion).toBe(2);
   });
 });

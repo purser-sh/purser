@@ -1,4 +1,4 @@
-import type { AgentEvent, StoredEvent } from "@agentdeck/protocol";
+import type { AgentEvent, BudgetStatus, StoredEvent } from "@agentdeck/protocol";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { EmptyStart } from "@/components/EmptyStart";
@@ -10,6 +10,7 @@ import { useRunner } from "@/lib/client";
 import { selectedSession, sessionEvents, useDeckStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { coachPrompt } from "@agentdeck/prompt-coach";
+import { formatUsdMicros } from "@/lib/money";
 
 function asAgent(event: StoredEvent): AgentEvent | null {
   if (event.payload.kind === "user_message") {
@@ -180,6 +181,9 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
   const selectedSessionId = useDeckStore((state) => state.selectedSessionId);
   const liveText = useDeckStore((state) => state.liveText);
   const pending = useDeckStore((state) => state.pendingPermissions);
+  const pendingBudgets = useDeckStore((state) => state.pendingBudgets);
+  const lastSpendBySession = useDeckStore((state) => state.lastSpendBySession);
+  const costModelByProvider = useDeckStore((state) => state.costModelByProvider);
   const configs = useDeckStore((state) => state.providerConfigs);
   const session = selectedSession(sessions, selectedSessionId);
   const [draft, setDraft] = useState("");
@@ -190,7 +194,7 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [visible, liveText, pending.length]);
+  }, [visible, liveText, pending.length, pendingBudgets.length]);
 
   async function send(text = draft.trim()) {
     if (session === undefined || text.length === 0) {
@@ -222,7 +226,14 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
 
   const streaming = liveText[session.id] ?? "";
   const sessionPending = pending.filter((item) => item.sessionId === session.id);
+  const sessionBudgets = pendingBudgets.filter((item) => item.sessionId === session.id);
   const demo = session.providerId === "echo";
+  const spend = lastSpendBySession[session.id];
+  const costModel = costModelByProvider[session.providerId] ?? "local";
+  const tightest: BudgetStatus | undefined = spend?.budgets.reduce<BudgetStatus | undefined>(
+    (best, item) => (best === undefined || item.pct >= best.pct ? item : best),
+    undefined,
+  );
 
   return (
     <main className="flex min-w-0 flex-1 flex-col">
@@ -256,6 +267,49 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
       <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
         {visible.map((event) => (
           <EventView event={event} key={event.id} sessionId={session.id} />
+        ))}
+        {sessionBudgets.map((item) => (
+          <div className="w-full max-w-2xl rounded-lg border border-amber-500/40 bg-amber-950/40 p-3 text-sm" key={item.requestId}>
+            <p className="font-medium">
+              Budget {item.budget.scope}/{item.budget.window} is at {Math.trunc(item.budget.pct)}%
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {item.budget.unit === "usd_micros"
+                ? `${formatUsdMicros(item.budget.spent)} of ${formatUsdMicros(item.budget.limit)}`
+                : `${item.budget.spent} / ${item.budget.limit} tokens`}
+            </p>
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <Button
+                onClick={() => void client.request("budget_response", { requestId: item.requestId, decision: "deny" })}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Stop
+              </Button>
+              <Button
+                onClick={() =>
+                  void client.request("budget_response", {
+                    requestId: item.requestId,
+                    decision: "allow_with_headroom",
+                    headroomUsdMicros: 1_000_000,
+                  })
+                }
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Allow with +$1
+              </Button>
+              <Button
+                onClick={() => void client.request("budget_response", { requestId: item.requestId, decision: "allow_once" })}
+                size="sm"
+                type="button"
+              >
+                Allow once
+              </Button>
+            </div>
+          </div>
         ))}
         {sessionPending.map((item) => (
           <div className="w-full max-w-2xl rounded-lg border border-amber-500/40 bg-amber-950/40 p-3 text-sm" key={item.requestId}>
@@ -293,21 +347,37 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <div className="min-w-0 flex-1 rounded-md border border-border bg-card/70 px-3 py-1.5 text-[11px] text-muted-foreground">
-            {estimate === null ? (
-              <p>Token coach · type a prompt to see spend before you send</p>
+            {spend !== undefined ? (
+              <div className="space-y-1">
+                <p>
+                  <span className="font-medium text-foreground">
+                    {spend.tokens.input + spend.tokens.output} tokens
+                  </span>
+                  {" · "}
+                  {costModel === "metered" && spend.costUsdMicros !== null ? formatUsdMicros(spend.costUsdMicros) : "—"}
+                  {spend.source === "estimated" ? <span className="text-amber-300"> · source: estimated</span> : null}
+                </p>
+                {tightest !== undefined ? (
+                  <div className="h-1 overflow-hidden rounded-full bg-border">
+                    <div
+                      className={cn("h-full", tightest.pct >= 100 ? "bg-destructive" : tightest.pct >= 80 ? "bg-amber-400" : "bg-emerald-400")}
+                      style={{ width: `${Math.min(100, Math.trunc(tightest.pct))}%` }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : estimate === null ? (
+              <p>Spend meter · send a run to see live tokens. Prompt coach still estimates before send.</p>
             ) : (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <p>
-                  <span className="font-medium text-foreground">{estimate.tokens}</span> tokens now
+                  <span className="font-medium text-foreground">{estimate.tokens}</span> prompt tokens (coach, not the loop)
                   {estimate.savedTokens > 0 ? (
                     <>
                       {" "}
                       → <span className="text-emerald-400">{estimate.compactTokens}</span> if shortened
-                      <span className="text-muted-foreground"> (saves {estimate.savedTokens})</span>
                     </>
-                  ) : (
-                    <span> · already compact</span>
-                  )}
+                  ) : null}
                 </p>
                 {estimate.savedTokens > 0 ? (
                   <Button

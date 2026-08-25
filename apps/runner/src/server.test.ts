@@ -46,6 +46,7 @@ async function boot(): Promise<{ ctx: AppContext; server: { port: number; close:
     clients: new Set(),
     activeRuns: new Map(),
     pendingPermissions: new Map(),
+    pendingBudgets: new Map(),
     relay: null,
     voice: null,
     folderWatch: null,
@@ -145,6 +146,31 @@ describe("runner websocket", () => {
     expect(text.includes("allowedRoots")).toBe(false);
     expect(text.includes("/home")).toBe(false);
     expect(text.toLowerCase().includes("workspace")).toBe(false);
+    await server.close();
+  });
+
+  test("hello with protocol 1 returns a typed protocol_version error", async () => {
+    const { server } = await boot();
+    const ws = connect(server.port, { Authorization: `Bearer ${TOKEN}` });
+    await new Promise<void>((resolve, reject) => {
+      ws.once("open", () => resolve());
+      ws.once("error", reject);
+      setTimeout(() => reject(new Error("websocket open timeout")), 3000);
+    });
+    const inbox = inboxOf(ws);
+    ws.send(
+      JSON.stringify({
+        id: "hello",
+        type: "hello",
+        payload: { token: TOKEN, clientVersion: "test", protocolVersion: 1 },
+      }),
+    );
+    const reply = await inbox.wait((message) => message.id === "hello");
+    expect(reply.type).toBe("error");
+    if (reply.type === "error") {
+      expect(reply.payload.code).toBe("protocol_version");
+    }
+    ws.terminate();
     await server.close();
   });
 

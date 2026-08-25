@@ -1,5 +1,9 @@
-import { asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, max } from "drizzle-orm";
 import type {
+  Budget,
+  BudgetAction,
+  BudgetScope,
+  BudgetWindow,
   CostModel,
   EventRole,
   FolderWatch,
@@ -10,13 +14,15 @@ import type {
   Session,
   SessionStatus,
   Setting,
+  SpendBucket,
+  SpendSummary,
   StatePayload,
   StoredEvent,
   StoredEventPayload,
   VoiceProfile,
   Workspace,
 } from "@agentdeck/protocol";
-import { StoredEventPayloadSchema } from "@agentdeck/protocol";
+import { PROTOCOL_VERSION, StoredEventPayloadSchema } from "@agentdeck/protocol";
 import type { AppDatabase } from "./client.ts";
 import { newId } from "./ids.ts";
 import { toIso } from "./paths.ts";
@@ -27,6 +33,7 @@ import {
   sessions,
   settings,
   tokenLedger,
+  budgets,
   voiceProfiles,
   workspaces,
 } from "./schema.sqlite.ts";
@@ -210,6 +217,9 @@ export function loadState(db: AppDatabase): StatePayload {
       .map(mapSetting)
       .filter((setting) => setting.key !== FOLDER_WATCHES_KEY),
     folderWatches: listFolderWatches(db),
+    budgets: listBudgets(db),
+    spendSummary: loadSpendSummary(db),
+    protocolVersion: PROTOCOL_VERSION,
   };
 }
 
@@ -675,4 +685,233 @@ export function listLedgerByWorkspace(db: AppDatabase, workspaceId: string): Led
 
 export function listLedger(db: AppDatabase): LedgerEntry[] {
   return db.select().from(tokenLedger).all().map(mapLedger);
+}
+
+function asBudgetScope(value: string): BudgetScope {
+  if (value === "workspace" || value === "session" || value === "global") {
+    return value;
+  }
+  return "global";
+}
+
+function asBudgetWindow(value: string): BudgetWindow {
+  if (value === "run" || value === "day" || value === "month") {
+    return value;
+  }
+  return "day";
+}
+
+function asBudgetAction(value: string): BudgetAction {
+  if (value === "warn" || value === "ask" || value === "hard_stop") {
+    return value;
+  }
+  return "warn";
+}
+
+function mapBudget(row: typeof budgets.$inferSelect): Budget {
+  return {
+    id: row.id,
+    scope: asBudgetScope(row.scope),
+    scopeId: row.scopeId,
+    window: asBudgetWindow(row.window),
+    limitUsdMicros: row.limitUsdMicros,
+    limitTokens: row.limitTokens,
+    action: asBudgetAction(row.action),
+    enabled: row.enabled,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  };
+}
+
+export function listBudgets(db: AppDatabase): Budget[] {
+  return db.select().from(budgets).orderBy(asc(budgets.createdAt)).all().map(mapBudget);
+}
+
+export function getBudget(db: AppDatabase, budgetId: string): Budget | undefined {
+  const row = db.select().from(budgets).where(eq(budgets.id, budgetId)).get();
+  return row === undefined ? undefined : mapBudget(row);
+}
+
+export function upsertBudget(
+  db: AppDatabase,
+  input: {
+    id?: string;
+    scope: BudgetScope;
+    scopeId: string | null;
+    window: BudgetWindow;
+    limitUsdMicros: number | null;
+    limitTokens: number | null;
+    action: BudgetAction;
+    enabled: boolean;
+  },
+): Budget {
+  const now = new Date();
+  const existing = input.id === undefined ? undefined : db.select().from(budgets).where(eq(budgets.id, input.id)).get();
+  if (existing !== undefined) {
+    db.update(budgets)
+      .set({
+        scope: input.scope,
+        scopeId: input.scopeId,
+        window: input.window,
+        limitUsdMicros: input.limitUsdMicros,
+        limitTokens: input.limitTokens,
+        action: input.action,
+        enabled: input.enabled,
+        updatedAt: now,
+      })
+      .where(eq(budgets.id, existing.id))
+      .run();
+    const updated = getBudget(db, existing.id);
+    if (updated === undefined) {
+      throw new Error("budget missing after update");
+    }
+    return updated;
+  }
+  const row = {
+    id: input.id ?? newId("bud"),
+    scope: input.scope,
+    scopeId: input.scopeId,
+    window: input.window,
+    limitUsdMicros: input.limitUsdMicros,
+    limitTokens: input.limitTokens,
+    action: input.action,
+    enabled: input.enabled,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.insert(budgets).values(row).run();
+  return mapBudget(row);
+}
+
+export function deleteBudget(db: AppDatabase, budgetId: string): boolean {
+  const existing = db.select().from(budgets).where(eq(budgets.id, budgetId)).get();
+  if (existing === undefined) {
+    return false;
+  }
+  db.delete(budgets).where(eq(budgets.id, budgetId)).run();
+  return true;
+}
+
+export function listRunsStartedBetween(db: AppDatabase, start: Date, end: Date): Run[] {
+  return db
+    .select()
+    .from(runs)
+    .where(and(gte(runs.startedAt, start), lt(runs.startedAt, end)))
+    .all()
+    .map(mapRun);
+}
+
+export type LedgerTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  tokens: number;
+  costUsdMicros: number | null;
+  unpricedModels: string[];
+  source: "provider_usage" | "estimated";
+};
+
+export function emptyLedgerTotals(): LedgerTotals {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    tokens: 0,
+    costUsdMicros: null,
+    unpricedModels: [],
+    source: "provider_usage",
+  };
+}
+
+export function sumLedgerRows(rows: LedgerEntry[]): LedgerTotals {
+  const totals = emptyLedgerTotals();
+  const unpriced = new Set<string>();
+  let estimated = false;
+  let priced = false;
+  let usd = 0;
+  for (const row of rows) {
+    totals.inputTokens += row.inputTokens;
+    totals.outputTokens += row.outputTokens;
+    totals.cacheReadTokens += row.cacheReadTokens;
+    totals.cacheWriteTokens += row.cacheWriteTokens;
+    if (row.source === "estimated") {
+      estimated = true;
+    }
+    if (row.costUsdMicros === null) {
+      if (row.model !== null && row.model.length > 0) {
+        unpriced.add(`${row.providerId}/${row.model}`);
+      }
+    } else {
+      priced = true;
+      usd += row.costUsdMicros;
+    }
+  }
+  totals.tokens = totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheWriteTokens;
+  totals.costUsdMicros = priced ? usd : null;
+  totals.unpricedModels = [...unpriced];
+  totals.source = estimated ? "estimated" : "provider_usage";
+  return totals;
+}
+
+export function listLedgerForRuns(db: AppDatabase, runIds: string[]): LedgerEntry[] {
+  if (runIds.length === 0) {
+    return [];
+  }
+  return db.select().from(tokenLedger).where(inArray(tokenLedger.runId, runIds)).all().map(mapLedger);
+}
+
+export function utcDayStart(ts: Date): Date {
+  return new Date(Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate()));
+}
+
+export function utcMonthStart(ts: Date): Date {
+  return new Date(Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), 1));
+}
+
+export function nextUtcDay(ts: Date): Date {
+  const start = utcDayStart(ts);
+  return new Date(start.getTime() + 24 * 60 * 60 * 1000);
+}
+
+export function nextUtcMonth(ts: Date): Date {
+  return new Date(Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth() + 1, 1));
+}
+
+function bucketFromRows(rows: LedgerEntry[]): SpendBucket {
+  const totals = sumLedgerRows(rows);
+  return { tokens: totals.tokens, costUsdMicros: totals.costUsdMicros };
+}
+
+export function loadSpendSummary(db: AppDatabase, now = new Date()): SpendSummary {
+  const dayStart = utcDayStart(now);
+  const monthStart = utcMonthStart(now);
+  const dayRuns = listRunsStartedBetween(db, dayStart, nextUtcDay(now));
+  const monthRuns = listRunsStartedBetween(db, monthStart, nextUtcMonth(now));
+  const dayRows = listLedgerForRuns(db, dayRuns.map((run) => run.id));
+  const monthRows = listLedgerForRuns(db, monthRuns.map((run) => run.id));
+  const workspaceIds = new Set<string>();
+  for (const row of monthRows) {
+    workspaceIds.add(row.workspaceId);
+  }
+  const byWorkspace = [...workspaceIds].map((workspaceId) => ({
+    workspaceId,
+    today: bucketFromRows(dayRows.filter((row) => row.workspaceId === workspaceId)),
+    month: bucketFromRows(monthRows.filter((row) => row.workspaceId === workspaceId)),
+  }));
+  const unpriced = new Set<string>();
+  for (const row of monthRows) {
+    if (row.costUsdMicros === null && row.model !== null) {
+      unpriced.add(`${row.providerId}/${row.model}`);
+    }
+  }
+  return {
+    generatedAt: toIso(now),
+    today: bucketFromRows(dayRows),
+    month: bucketFromRows(monthRows),
+    unpricedModels: [...unpriced],
+    catalogStale: false,
+    byWorkspace,
+  };
 }

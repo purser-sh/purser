@@ -11,9 +11,14 @@ import {
   VoiceProfileSchema,
   WorkspaceSchema,
   FolderWatchSchema,
+  BudgetSchema,
+  BudgetStatusSchema,
+  SpendSummarySchema,
+  TokenCountsSchema,
 } from "./entities.ts";
 import { CostModelSchema, FileEncodingSchema, RunStatusSchema } from "./enums.ts";
-import { AbsolutePathSchema, IdSchema } from "./primitives.ts";
+import { PROTOCOL_VERSION } from "./constants.ts";
+import { AbsolutePathSchema, IdSchema, IsoDateTimeSchema } from "./primitives.ts";
 
 export const StatePayloadSchema = z
   .object({
@@ -25,6 +30,9 @@ export const StatePayloadSchema = z
     voiceProfiles: z.array(VoiceProfileSchema),
     settings: z.array(SettingSchema),
     folderWatches: z.array(FolderWatchSchema).default([]),
+    budgets: z.array(BudgetSchema).default([]),
+    spendSummary: SpendSummarySchema,
+    protocolVersion: z.literal(PROTOCOL_VERSION),
   })
   .strict();
 export type StatePayload = z.infer<typeof StatePayloadSchema>;
@@ -172,3 +180,76 @@ export const SyncEventPayloadSchema = z
   })
   .strict();
 export type SyncEventPayload = z.infer<typeof SyncEventPayloadSchema>;
+
+export const SpendUpdatePayloadSchema = z
+  .object({
+    runId: IdSchema,
+    sessionId: IdSchema,
+    workspaceId: IdSchema,
+    tokens: TokenCountsSchema,
+    costUsdMicros: z.number().int().nullable(),
+    costModel: CostModelSchema,
+    source: z.enum(["provider_usage", "estimated"]),
+    level: z.enum(["info", "warning"]),
+    budgets: z.array(BudgetStatusSchema),
+  })
+  .strict();
+export type SpendUpdatePayload = z.infer<typeof SpendUpdatePayloadSchema>;
+
+export const BudgetRequestPayloadSchema = z
+  .object({
+    requestId: IdSchema,
+    runId: IdSchema.nullable(),
+    sessionId: IdSchema,
+    budget: BudgetStatusSchema,
+  })
+  .strict();
+export type BudgetRequestPayload = z.infer<typeof BudgetRequestPayloadSchema>;
+
+export const BudgetExceededPayloadSchema = z
+  .object({
+    runId: IdSchema.nullable(),
+    sessionId: IdSchema,
+    budget: BudgetStatusSchema,
+    outcome: z.enum(["warned", "stopped", "overridden"]),
+  })
+  .strict();
+export type BudgetExceededPayload = z.infer<typeof BudgetExceededPayloadSchema>;
+
+export const SpendReportRowSchema = z
+  .object({
+    groupKey: z.string().min(1),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    cacheReadTokens: z.number().int().nonnegative(),
+    cacheWriteTokens: z.number().int().nonnegative(),
+    costUsdMicros: z.number().int().nullable(),
+  })
+  .strict();
+export type SpendReportRow = z.infer<typeof SpendReportRowSchema>;
+
+export const SpendReportPayloadSchema = z
+  .object({
+    rows: z.array(SpendReportRowSchema),
+    totals: SpendReportRowSchema.omit({ groupKey: true }).extend({ groupKey: z.literal("totals") }),
+    generatedAt: IsoDateTimeSchema,
+    unpricedModels: z.array(z.string()),
+  })
+  .strict();
+export type SpendReportPayload = z.infer<typeof SpendReportPayloadSchema>;
+
+export const RunEstimatePayloadSchema = z
+  .object({
+    sessionId: IdSchema,
+    tokens: z.number().int().nonnegative(),
+    compactText: z.string(),
+    compactTokens: z.number().int().nonnegative(),
+    savedTokens: z.number().int(),
+    notes: z.array(z.string()),
+    costUsdMicros: z.number().int().nullable(),
+    costModel: CostModelSchema,
+    unpriced: z.boolean(),
+    budgets: z.array(BudgetStatusSchema),
+  })
+  .strict();
+export type RunEstimatePayload = z.infer<typeof RunEstimatePayloadSchema>;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AgentEventSchema } from "./agent-event.ts";
-import { AuthModeSchema, EventRoleSchema, PermissionModeSchema, RunStatusSchema, SessionStatusSchema, VoiceVerbositySchema } from "./enums.ts";
+import { AuthModeSchema, BudgetActionSchema, BudgetScopeSchema, BudgetWindowSchema, EventRoleSchema, PermissionModeSchema, RunStatusSchema, SessionStatusSchema, VoiceVerbositySchema } from "./enums.ts";
 import { AbsolutePathSchema, IdSchema, IsoDateTimeSchema } from "./primitives.ts";
 
 export const WorkspaceSchema = z
@@ -139,3 +139,74 @@ export const FolderWatchSchema = z
   })
   .strict();
 export type FolderWatch = z.infer<typeof FolderWatchSchema>;
+
+export const BudgetSchema = z
+  .object({
+    id: IdSchema,
+    scope: BudgetScopeSchema,
+    scopeId: IdSchema.nullable(),
+    window: BudgetWindowSchema,
+    limitUsdMicros: z.number().int().nonnegative().nullable(),
+    limitTokens: z.number().int().nonnegative().nullable(),
+    action: BudgetActionSchema,
+    enabled: z.boolean(),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict()
+  .refine((value) => value.limitUsdMicros !== null || value.limitTokens !== null, {
+    message: "budget needs a USD or token limit",
+  });
+export type Budget = z.infer<typeof BudgetSchema>;
+
+export const SpendBucketSchema = z
+  .object({
+    tokens: z.number().int().nonnegative(),
+    costUsdMicros: z.number().int().nullable(),
+  })
+  .strict();
+export type SpendBucket = z.infer<typeof SpendBucketSchema>;
+
+export const SpendSummarySchema = z
+  .object({
+    generatedAt: IsoDateTimeSchema,
+    today: SpendBucketSchema,
+    month: SpendBucketSchema,
+    unpricedModels: z.array(z.string()),
+    catalogStale: z.boolean(),
+    byWorkspace: z.array(
+      z
+        .object({
+          workspaceId: IdSchema,
+          today: SpendBucketSchema,
+          month: SpendBucketSchema,
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type SpendSummary = z.infer<typeof SpendSummarySchema>;
+
+export const BudgetStatusSchema = z
+  .object({
+    budgetId: IdSchema,
+    scope: BudgetScopeSchema,
+    window: BudgetWindowSchema,
+    spent: z.number().nonnegative(),
+    limit: z.number().positive(),
+    pct: z.number().nonnegative(),
+    action: BudgetActionSchema,
+    unit: z.enum(["usd_micros", "tokens"]),
+  })
+  .strict();
+export type BudgetStatus = z.infer<typeof BudgetStatusSchema>;
+
+export const TokenCountsSchema = z
+  .object({
+    input: z.number().int().nonnegative(),
+    output: z.number().int().nonnegative(),
+    cacheRead: z.number().int().nonnegative(),
+    cacheWrite: z.number().int().nonnegative(),
+  })
+  .strict();
+export type TokenCounts = z.infer<typeof TokenCountsSchema>;

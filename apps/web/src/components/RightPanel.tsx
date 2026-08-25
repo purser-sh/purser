@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useRunner } from "@/lib/client";
+import { formatUsdMicros } from "@/lib/money";
 import { PERMISSION_MODES, selectedSession, selectedWorkspace, useDeckStore } from "@/lib/store";
 
 function relativeToWorkspace(root: string, abs: string): string {
@@ -33,6 +34,7 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
   const providerConfigs = useDeckStore((state) => state.providerConfigs);
   const modelsByProvider = useDeckStore((state) => state.modelsByProvider);
   const costModelByProvider = useDeckStore((state) => state.costModelByProvider);
+  const spendSummary = useDeckStore((state) => state.spendSummary);
   const healthByProvider = useDeckStore((state) => state.healthByProvider);
   const folderWatches = useDeckStore((state) => state.folderWatches);
   const lastSyncEvent = useDeckStore((state) => state.lastSyncEvent);
@@ -300,6 +302,31 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
           {costModelByProvider[session.providerId] ?? "unknown"} · observed tokens, not an invoice. Dollars only appear
           for metered APIs we can price — never a fabricated $0.00.
         </p>
+      </section>
+      <section>
+        <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Spend</h3>
+        <p className="text-sm">
+          Today {spendSummary.today.tokens} tok
+          {spendSummary.today.costUsdMicros !== null ? ` · ${formatUsdMicros(spendSummary.today.costUsdMicros)}` : " · —"}
+        </p>
+        <p className="text-sm">
+          Month {spendSummary.month.tokens} tok
+          {spendSummary.month.costUsdMicros !== null ? ` · ${formatUsdMicros(spendSummary.month.costUsdMicros)}` : " · —"}
+        </p>
+        {spendSummary.catalogStale ? (
+          <p className="mt-1 text-xs text-amber-300">Pricing catalog asOf is older than 90 days. Check packages/pricing.</p>
+        ) : null}
+        {spendSummary.unpricedModels.length > 0 ? (
+          <p className="mt-1 text-[11px] text-muted-foreground">Unpriced: {spendSummary.unpricedModels.join(", ")}</p>
+        ) : null}
+        <div className="mt-2 space-y-1">
+          {spendSummary.byWorkspace.map((row) => (
+            <p className="text-[11px] text-muted-foreground" key={row.workspaceId}>
+              {workspaces.find((item) => item.id === row.workspaceId)?.name ?? row.workspaceId}: {row.today.tokens} today /{" "}
+              {row.month.tokens} month
+            </p>
+          ))}
+        </div>
       </section>
       <section>
         <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Workspace</h3>

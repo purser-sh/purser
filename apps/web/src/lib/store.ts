@@ -1,4 +1,5 @@
 import type {
+  BudgetRequestPayload,
   CostModel,
   ModelInfo,
   PermissionMode,
@@ -8,11 +9,14 @@ import type {
   Run,
   ServerMessage,
   Session,
+  SpendSummary,
+  SpendUpdatePayload,
   StatePayload,
   StoredEvent,
   SyncEventPayload,
   Workspace,
 } from "@agentdeck/protocol";
+import { PROTOCOL_VERSION } from "@agentdeck/protocol";
 import { create } from "zustand";
 
 export type ConnectionStatus = "idle" | "connecting" | "ready" | "error";
@@ -28,6 +32,8 @@ type DeckStore = StatePayload & {
   costModelByProvider: Record<string, CostModel>;
   healthByProvider: Record<string, ProviderHealthPayload>;
   pendingPermissions: PermissionRequestPayload[];
+  pendingBudgets: BudgetRequestPayload[];
+  lastSpendBySession: Record<string, SpendUpdatePayload>;
   relayStatus: RelayStatusPayload | null;
   transcriptPartial: string;
   transcriptFinal: string;
@@ -41,6 +47,7 @@ type DeckStore = StatePayload & {
   selectSession: (id: string | null) => void;
   setVoiceActive: (active: boolean) => void;
   clearPermission: (requestId: string) => void;
+  clearBudget: (requestId: string) => void;
 };
 
 function selectAfterState(state: StatePayload, currentWorkspaceId: string | null, currentSessionId: string | null) {
@@ -56,6 +63,15 @@ function selectAfterState(state: StatePayload, currentWorkspaceId: string | null
   return { workspaceId, sessionId };
 }
 
+const emptySpendSummary: SpendSummary = {
+  generatedAt: "1970-01-01T00:00:00.000Z",
+  today: { tokens: 0, costUsdMicros: null },
+  month: { tokens: 0, costUsdMicros: null },
+  unpricedModels: [],
+  catalogStale: false,
+  byWorkspace: [],
+};
+
 export const useDeckStore = create<DeckStore>((set, get) => ({
   connection: "idle",
   connectionDetail: null,
@@ -67,6 +83,9 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   voiceProfiles: [],
   settings: [],
   folderWatches: [],
+  budgets: [],
+  spendSummary: emptySpendSummary,
+  protocolVersion: PROTOCOL_VERSION,
   selectedWorkspaceId: null,
   selectedSessionId: null,
   liveText: {},
@@ -75,6 +94,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   costModelByProvider: {},
   healthByProvider: {},
   pendingPermissions: [],
+  pendingBudgets: [],
+  lastSpendBySession: {},
   relayStatus: null,
   transcriptPartial: "",
   transcriptFinal: "",
@@ -84,6 +105,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   setVoiceActive: (active) => set({ voiceActive: active }),
   clearPermission: (requestId) =>
     set({ pendingPermissions: get().pendingPermissions.filter((item) => item.requestId !== requestId) }),
+  clearBudget: (requestId) =>
+    set({ pendingBudgets: get().pendingBudgets.filter((item) => item.requestId !== requestId) }),
   setConnection: (status, detail) => set({ connection: status, connectionDetail: detail ?? null }),
   applyState: (state) => {
     const selected = selectAfterState(state, get().selectedWorkspaceId, get().selectedSessionId);
@@ -159,6 +182,24 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           message.payload,
         ],
       });
+      return;
+    }
+    if (message.type === "budget_request") {
+      set({
+        pendingBudgets: [
+          ...current.pendingBudgets.filter((item) => item.requestId !== message.payload.requestId),
+          message.payload,
+        ],
+      });
+      return;
+    }
+    if (message.type === "spend_update") {
+      set({
+        lastSpendBySession: { ...current.lastSpendBySession, [message.payload.sessionId]: message.payload },
+      });
+      return;
+    }
+    if (message.type === "budget_exceeded" || message.type === "spend_report" || message.type === "run_estimate") {
       return;
     }
     if (message.type === "models") {

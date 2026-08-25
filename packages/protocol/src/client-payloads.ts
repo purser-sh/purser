@@ -1,13 +1,12 @@
 import { z } from "zod";
-import { PROTOCOL_VERSION } from "./constants.ts";
-import { PermissionModeSchema, VoiceInputModeSchema } from "./enums.ts";
+import { BudgetActionSchema, BudgetDecisionSchema, BudgetScopeSchema, BudgetWindowSchema, PermissionModeSchema, VoiceInputModeSchema } from "./enums.ts";
 import { AbsolutePathSchema, IdSchema, UserFsPathSchema, WorkspaceRelativePathSchema } from "./primitives.ts";
 
 export const HelloPayloadSchema = z
   .object({
     token: z.string().min(1),
     clientVersion: z.string().min(1),
-    protocolVersion: z.literal(PROTOCOL_VERSION),
+    protocolVersion: z.number().int().positive(),
   })
   .strict();
 export type HelloPayload = z.infer<typeof HelloPayloadSchema>;
@@ -202,7 +201,59 @@ export const EstimatePromptPayloadSchema = z
     sessionId: IdSchema.optional(),
   })
   .strict();
+/** @deprecated Use `estimate_run`. Accepted for one release. */
 export type EstimatePromptPayload = z.infer<typeof EstimatePromptPayloadSchema>;
+
+export const EstimateRunPayloadSchema = z
+  .object({
+    sessionId: IdSchema,
+    text: z.string().min(1),
+  })
+  .strict();
+export type EstimateRunPayload = z.infer<typeof EstimateRunPayloadSchema>;
+
+export const GetSpendPayloadSchema = z
+  .object({
+    scope: BudgetScopeSchema,
+    scopeId: IdSchema.optional(),
+    window: BudgetWindowSchema,
+    groupBy: z.enum(["provider", "session", "day", "workspace"]).optional(),
+  })
+  .strict();
+export type GetSpendPayload = z.infer<typeof GetSpendPayloadSchema>;
+
+export const SetBudgetPayloadSchema = z
+  .object({
+    id: IdSchema.optional(),
+    scope: BudgetScopeSchema,
+    scopeId: IdSchema.nullable(),
+    window: BudgetWindowSchema,
+    limitUsdMicros: z.number().int().nonnegative().nullable(),
+    limitTokens: z.number().int().nonnegative().nullable(),
+    action: BudgetActionSchema,
+    enabled: z.boolean(),
+  })
+  .strict()
+  .refine((value) => value.limitUsdMicros !== null || value.limitTokens !== null, {
+    message: "budget needs a USD or token limit",
+  });
+export type SetBudgetPayload = z.infer<typeof SetBudgetPayloadSchema>;
+
+export const DeleteBudgetPayloadSchema = z
+  .object({
+    budgetId: IdSchema,
+  })
+  .strict();
+export type DeleteBudgetPayload = z.infer<typeof DeleteBudgetPayloadSchema>;
+
+export const BudgetResponsePayloadSchema = z
+  .object({
+    requestId: IdSchema,
+    decision: BudgetDecisionSchema,
+    headroomUsdMicros: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type BudgetResponsePayload = z.infer<typeof BudgetResponsePayloadSchema>;
 
 export const WatchFolderPayloadSchema = z
   .object({

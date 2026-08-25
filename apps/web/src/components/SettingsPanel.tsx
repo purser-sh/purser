@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRunner } from "@/lib/client";
+import { parseUsdToMicros } from "@/lib/money";
 import { useDeckStore } from "@/lib/store";
 
 export function SettingsPanel() {
@@ -14,11 +15,17 @@ export function SettingsPanel() {
   const selectedWorkspaceId = useDeckStore((state) => state.selectedWorkspaceId);
   const folderWatches = useDeckStore((state) => state.folderWatches);
   const lastSyncEvent = useDeckStore((state) => state.lastSyncEvent);
+  const budgets = useDeckStore((state) => state.budgets);
+  const selectedSessionId = useDeckStore((state) => state.selectedSessionId);
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [relayUrl, setRelayUrl] = useState("ws://127.0.0.1:7430");
   const [code, setCode] = useState(() => generatePairingCode());
   const [inboxPath, setInboxPath] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
+  const [limitTokens, setLimitTokens] = useState("100000");
+  const [limitUsd, setLimitUsd] = useState("");
+  const [budgetAction, setBudgetAction] = useState<"warn" | "ask" | "hard_stop">("hard_stop");
+  const [budgetWindow, setBudgetWindow] = useState<"run" | "day" | "month">("day");
   const workspace = workspaces.find((item) => item.id === selectedWorkspaceId);
 
   return (
@@ -153,6 +160,118 @@ export function SettingsPanel() {
         {workspace?.gitRemote ? (
           <p className="mt-1 font-mono text-xs text-muted-foreground">{workspace.gitRemote}</p>
         ) : null}
+      </section>
+      <section>
+        <h3 className="mb-2 font-medium">Budgets</h3>
+        <p className="mb-2 text-xs text-muted-foreground">
+          USD limits apply to metered APIs we can price. Token limits apply to every cost model. Day/month buckets use the
+          run start time (UTC).
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value === "run" || value === "day" || value === "month") {
+                setBudgetWindow(value);
+              }
+            }}
+            value={budgetWindow}
+          >
+            <option value="run">per run</option>
+            <option value="day">per day</option>
+            <option value="month">per month</option>
+          </select>
+          <select
+            className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value === "warn" || value === "ask" || value === "hard_stop") {
+                setBudgetAction(value);
+              }
+            }}
+            value={budgetAction}
+          >
+            <option value="warn">warn</option>
+            <option value="ask">ask</option>
+            <option value="hard_stop">hard stop</option>
+          </select>
+        </div>
+        <Input
+          className="mt-2"
+          onChange={(event) => setLimitTokens(event.target.value)}
+          placeholder="token limit"
+          value={limitTokens}
+        />
+        <Input
+          className="mt-2"
+          onChange={(event) => setLimitUsd(event.target.value)}
+          placeholder="USD limit (optional, e.g. 5.00)"
+          value={limitUsd}
+        />
+        <Button
+          className="mt-2"
+          onClick={() => {
+            const tokens = limitTokens.trim().length === 0 ? null : Number(limitTokens);
+            const usd = parseUsdToMicros(limitUsd);
+            if ((tokens === null || !Number.isFinite(tokens)) && usd === null) {
+              return;
+            }
+            void client.request("set_budget", {
+              scope: selectedWorkspaceId === null ? "global" : "workspace",
+              scopeId: selectedWorkspaceId,
+              window: budgetWindow,
+              limitTokens: tokens !== null && Number.isFinite(tokens) ? Math.trunc(tokens) : null,
+              limitUsdMicros: usd,
+              action: budgetAction,
+              enabled: true,
+            });
+          }}
+          size="sm"
+          type="button"
+        >
+          Save workspace budget
+        </Button>
+        {selectedSessionId !== null ? (
+          <Button
+            className="mt-2 ml-2"
+            onClick={() => {
+              const tokens = limitTokens.trim().length === 0 ? null : Number(limitTokens);
+              void client.request("set_budget", {
+                scope: "session",
+                scopeId: selectedSessionId,
+                window: budgetWindow,
+                limitTokens: tokens !== null && Number.isFinite(tokens) ? Math.trunc(tokens) : null,
+                limitUsdMicros: null,
+                action: budgetAction,
+                enabled: true,
+              });
+            }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Save session token cap
+          </Button>
+        ) : null}
+        <div className="mt-2 space-y-1">
+          {budgets.map((budget) => (
+            <div className="flex items-center justify-between text-xs text-muted-foreground" key={budget.id}>
+              <span>
+                {budget.scope}/{budget.window} · {budget.action}
+                {budget.limitTokens !== null ? ` · ${budget.limitTokens} tok` : ""}
+                {budget.limitUsdMicros !== null ? ` · ${budget.limitUsdMicros} µUSD` : ""}
+              </span>
+              <button
+                className="text-destructive"
+                onClick={() => void client.request("delete_budget", { budgetId: budget.id })}
+                type="button"
+              >
+                delete
+              </button>
+            </div>
+          ))}
+        </div>
       </section>
       <section>
         <h3 className="mb-2 font-medium">Voice profiles</h3>

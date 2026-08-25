@@ -19,6 +19,11 @@ import {
   RelayStatusPayloadSchema,
   PromptEstimatePayloadSchema,
   SyncEventPayloadSchema,
+  SpendUpdatePayloadSchema,
+  BudgetRequestPayloadSchema,
+  BudgetExceededPayloadSchema,
+  SpendReportPayloadSchema,
+  RunEstimatePayloadSchema,
 } from "./server-payloads.ts";
 
 function serverFrame<TType extends string, TPayload extends z.ZodType>(
@@ -73,6 +78,11 @@ export const ServerErrorMessageSchema = serverFrame("error", ErrorPayloadSchema)
 export const ServerRelayStatusMessageSchema = serverFrame("relay_status", RelayStatusPayloadSchema);
 export const ServerPromptEstimateMessageSchema = serverFrame("prompt_estimate", PromptEstimatePayloadSchema);
 export const ServerSyncEventMessageSchema = serverFrame("sync_event", SyncEventPayloadSchema);
+export const ServerSpendUpdateMessageSchema = serverFrame("spend_update", SpendUpdatePayloadSchema);
+export const ServerBudgetRequestMessageSchema = serverFrame("budget_request", BudgetRequestPayloadSchema);
+export const ServerBudgetExceededMessageSchema = serverFrame("budget_exceeded", BudgetExceededPayloadSchema);
+export const ServerSpendReportMessageSchema = serverFrame("spend_report", SpendReportPayloadSchema);
+export const ServerRunEstimateMessageSchema = serverFrame("run_estimate", RunEstimatePayloadSchema);
 
 export const ServerMessageSchema = z.discriminatedUnion("type", [
   ServerStateMessageSchema,
@@ -93,6 +103,11 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   ServerRelayStatusMessageSchema,
   ServerPromptEstimateMessageSchema,
   ServerSyncEventMessageSchema,
+  ServerSpendUpdateMessageSchema,
+  ServerBudgetRequestMessageSchema,
+  ServerBudgetExceededMessageSchema,
+  ServerSpendReportMessageSchema,
+  ServerRunEstimateMessageSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;

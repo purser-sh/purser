@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useRunner } from "@/lib/client";
 import { useDeckStore, workspaceSessions } from "@/lib/store";
 
-export function LeftRail() {
+export function LeftRail(props: { onOpenWorkspace: () => void }) {
   const client = useRunner();
   const workspaces = useDeckStore((state) => state.workspaces);
   const sessions = useDeckStore((state) => state.sessions);
@@ -52,6 +52,9 @@ export function LeftRail() {
               >
                 <ChevronDown className={`h-3.5 w-3.5 transition ${expanded ? "" : "-rotate-90"}`} />
                 <span className="flex-1 truncate font-medium">{workspace.name}</span>
+                {workspace.gitRemote ? (
+                  <span className="rounded border border-border px-1 text-[9px] uppercase text-muted-foreground">git</span>
+                ) : null}
                 <button
                   className="text-muted-foreground hover:text-destructive"
                   onClick={(event) => {
@@ -109,7 +112,13 @@ export function LeftRail() {
           );
         })}
         {filtered.length === 0 ? (
-          <p className="px-2 text-sm text-muted-foreground">Pick a folder to add a workspace.</p>
+          <div className="px-2">
+            <p className="mb-2 text-sm text-muted-foreground">No workspaces yet.</p>
+            <Button className="w-full" onClick={props.onOpenWorkspace} size="sm" type="button">
+              <Plus className="h-3.5 w-3.5" />
+              Open a folder
+            </Button>
+          </div>
         ) : null}
       </div>
     </aside>

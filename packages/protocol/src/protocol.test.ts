@@ -8,7 +8,7 @@ import {
   ProtocolError,
   ServerMessageSchema,
 } from "./index.ts";
-import type { AgentEvent, ClientMessage, ServerMessage } from "./index.ts";
+import type { AgentEvent, ClientMessage, ClientMessageType, ServerMessage, ServerMessageType } from "./index.ts";
 
 const NOW = "2026-08-22T15:43:00.000Z";
 
@@ -33,6 +33,8 @@ const session = {
   tokensIn: 0,
   tokensOut: 0,
   costUsd: 0,
+  bypassExpiresAt: null,
+  bypassRunsRemaining: null,
   createdAt: NOW,
   updatedAt: NOW,
 };
@@ -138,7 +140,28 @@ const clientMessages: ClientMessage[] = [
       isDefault: true,
     },
   },
-  { id: "c24", type: "pair_relay", payload: { relayUrl: "ws://127.0.0.1:7430", code: "ABCD12" } },
+  { id: "c24", type: "pair_relay", payload: { relayUrl: "ws://127.0.0.1:7430", code: "ABCDEFGH" } },
+  { id: "c25", type: "estimate_prompt", payload: { text: "please refactor this module" } },
+  {
+    id: "c26",
+    type: "watch_folder",
+    payload: { workspaceId: "ws_1", absPath: "/home/aksingh/inbox" },
+  },
+  {
+    id: "c26b",
+    type: "watch_folder",
+    payload: { workspaceId: "ws_1", absPath: "~/xyz" },
+  },
+  {
+    id: "c27",
+    type: "unwatch_folder",
+    payload: { workspaceId: "ws_1", absPath: "/home/aksingh/inbox" },
+  },
+  {
+    id: "c28",
+    type: "link_repository",
+    payload: { workspaceId: "ws_1", remoteUrl: "https://github.com/acme/app.git", forge: "github" },
+  },
 ];
 
 const emptyState = {
@@ -192,6 +215,7 @@ const emptyState = {
     },
   ],
   settings: [{ key: "theme", value: "dark" }],
+  folderWatches: [],
 };
 
 const serverMessages: ServerMessage[] = [
@@ -265,12 +289,45 @@ const serverMessages: ServerMessage[] = [
   {
     id: "s13",
     type: "relay_status",
-    payload: { connected: true, relayUrl: "ws://127.0.0.1:7430", code: "ABCD12" },
+    payload: { connected: true, relayUrl: "ws://127.0.0.1:7430", code: "ABCDEFGH" },
+  },
+  {
+    id: "s14",
+    type: "prompt_estimate",
+    payload: {
+      tokens: 12,
+      compactText: "refactor module",
+      compactTokens: 4,
+      savedTokens: 8,
+      notes: ["removed filler"],
+    },
+  },
+  {
+    id: "s15",
+    type: "sync_event",
+    payload: {
+      workspaceId: "ws_1",
+      sourcePath: "/home/aksingh/inbox/a.ts",
+      destPath: ".inbox/a.ts",
+      action: "added",
+    },
   },
 ];
 
+type AssertTrue<T extends true> = T;
+type _ClientFixturesCoverAll = AssertTrue<
+  Exclude<ClientMessageType, (typeof clientMessages)[number]["type"]> extends never ? true : false
+>;
+type _ServerFixturesCoverAll = AssertTrue<
+  Exclude<ServerMessageType, (typeof serverMessages)[number]["type"]> extends never ? true : false
+>;
+const _clientFixturesCoverAll: _ClientFixturesCoverAll = true;
+const _serverFixturesCoverAll: _ServerFixturesCoverAll = true;
+
 describe("AgentEventSchema", () => {
   test("parses every variant", () => {
+    expect(_clientFixturesCoverAll).toBe(true);
+    expect(_serverFixturesCoverAll).toBe(true);
     for (const event of agentEvents) {
       expect(AgentEventSchema.parse(event)).toEqual(event);
     }

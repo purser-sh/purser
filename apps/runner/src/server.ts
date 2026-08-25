@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 import {
   deleteSession as dbDeleteSession,
@@ -11,8 +11,12 @@ import {
   insertSession,
   insertWorkspace,
   loadState,
+  listFolderWatches,
+  expandHome,
+  saveFolderWatches,
   seedDefaults,
   updateSession,
+  updateWorkspace,
   upsertProviderConfig,
   upsertVoiceProfile,
   type AppDatabase,
@@ -22,9 +26,11 @@ import {
   PROTOCOL_VERSION,
   type ClientMessage,
   type ServerMessage,
+  type Session,
 } from "@agentdeck/protocol";
 import type { RunnerConfig } from "./config.ts";
-import { detectGitRemote } from "./git.ts";
+import { resolvedHosts, resolvedOrigins } from "./config.ts";
+import { detectGitRemote, setOriginRemote } from "./git.ts";
 import {
   assertAllowed,
   assertDirectory,
@@ -39,14 +45,29 @@ import { getSecret, setSecret, takeApiKeyFromSettings } from "./secrets.ts";
 import { connectRelay, type RelayHandle } from "./relay.ts";
 import { VoiceSession, toBase64Pcm } from "./voice-session.ts";
 import { describeRunning, lastAssistantText, parseLocalCommand } from "./voice-commands.ts";
+import { FolderWatchService } from "./folder-watch.ts";
+import { coachPrompt } from "@agentdeck/prompt-coach";
+import {
+  checkWebsocketUpgrade,
+  pairingCodesEqual,
+  parseRemote,
+  sealJson,
+  timingSafeEqualString,
+} from "@agentdeck/integrations";
+import {
+  consumeBypassRun,
+  enableBypass,
+  expireBypassIfConsumed,
+  refreshBypass,
+} from "./bypass.ts";
 
-const CLIENT_VERSION = "0.1.0";
 const MAX_FILE_BYTES = 512 * 1024;
 
 export type Client = {
   ws: WebSocket;
   authed: boolean;
   viaRelay?: boolean;
+  relaySealKey?: CryptoKey;
 };
 
 export type AppContext = {
@@ -57,6 +78,7 @@ export type AppContext = {
   pendingPermissions: Map<string, (allow: boolean) => void>;
   relay: RelayHandle | null;
   voice: VoiceSession | null;
+  folderWatch: FolderWatchService | null;
 };
 
 class HandlerError extends Error {
@@ -73,9 +95,18 @@ function newFrameId(): string {
 }
 
 function send(client: Client, message: ServerMessage): void {
-  if (client.ws.readyState === WebSocket.OPEN) {
-    client.ws.send(JSON.stringify(message));
+  if (client.ws.readyState !== WebSocket.OPEN) {
+    return;
   }
+  if (client.relaySealKey !== undefined) {
+    void sealJson(client.relaySealKey, message).then((sealed) => {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify(sealed));
+      }
+    });
+    return;
+  }
+  client.ws.send(JSON.stringify(message));
 }
 
 function errorMessage(id: string, message: string, code?: string): ServerMessage {
@@ -134,12 +165,26 @@ function adapterConfig(ctx: AppContext, providerId: string) {
   };
 }
 
+function resolveUserFsPath(path: string): string {
+  const expanded = expandHome(path);
+  if (!expanded.startsWith("/")) {
+    throw new HandlerError("path_invalid", "path must be absolute");
+  }
+  return resolve(expanded);
+}
+
 function latestSession(ctx: AppContext) {
   const sessions = loadState(ctx.db).sessions;
   return sessions[sessions.length - 1];
 }
 
 function startRun(ctx: AppContext, sessionId: string, prompt: string, replyId: string): void {
+  const existing = getSession(ctx.db, sessionId);
+  if (existing === undefined) {
+    throw new HandlerError("not_found", "session not found");
+  }
+  const refreshed = refreshBypass(ctx.db, existing);
+  consumeBypassRun(ctx.db, refreshed);
   const run = prepareRun(ctx.db, sessionId, prompt);
   const controller = new AbortController();
   ctx.activeRuns.set(run.id, controller);
@@ -171,6 +216,7 @@ function startRun(ctx: AppContext, sessionId: string, prompt: string, replyId: s
       }),
   }).finally(() => {
     ctx.activeRuns.delete(run.id);
+    expireBypassIfConsumed(ctx.db, run.sessionId);
   });
 }
 
@@ -269,9 +315,9 @@ async function handleUtterance(ctx: AppContext, text: string): Promise<void> {
 async function dispatch(ctx: AppContext, client: Client, message: ClientMessage): Promise<void> {
   switch (message.type) {
     case "hello": {
-      const tokenOk =
-        message.payload.token === ctx.config.token ||
-        (ctx.relay !== null && message.payload.token === ctx.relay.code);
+      const tokenOk = client.viaRelay
+        ? ctx.relay !== null && pairingCodesEqual(message.payload.token, ctx.relay.code)
+        : timingSafeEqualString(message.payload.token, ctx.config.token);
       if (!tokenOk) {
         throw new HandlerError("unauthorized", "invalid token");
       }
@@ -352,11 +398,15 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         title: message.payload.title ?? "New session",
         providerId: message.payload.providerId,
         modelId: message.payload.modelId ?? null,
-        permissionMode: message.payload.permissionMode,
+        permissionMode: message.payload.permissionMode === "bypass" ? "ask" : message.payload.permissionMode,
       });
+      const withBypass =
+        message.payload.permissionMode === "bypass"
+          ? (enableBypass(ctx.db, session.id, ctx.config) ?? session)
+          : session;
       const worktreePath = createSessionWorktree(workspace.absPath, session.id);
       const withTree =
-        worktreePath === null ? session : (updateSession(ctx.db, session.id, { worktreePath }) ?? session);
+        worktreePath === null ? withBypass : (updateSession(ctx.db, session.id, { worktreePath }) ?? withBypass);
       send(client, { id: message.id, type: "session_created", payload: withTree });
       return;
     }
@@ -381,11 +431,25 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       if (getAdapter(message.payload.providerId) === undefined) {
         throw new HandlerError("provider", `provider ${message.payload.providerId} is not available yet`);
       }
-      const session = updateSession(ctx.db, message.payload.sessionId, {
-        providerId: message.payload.providerId,
-        modelId: message.payload.modelId,
-        permissionMode: message.payload.permissionMode,
-      });
+      let session: Session | undefined;
+      if (message.payload.permissionMode === "bypass") {
+        session = enableBypass(ctx.db, message.payload.sessionId, ctx.config);
+        if (session !== undefined) {
+          session =
+            updateSession(ctx.db, message.payload.sessionId, {
+              providerId: message.payload.providerId,
+              modelId: message.payload.modelId,
+            }) ?? session;
+        }
+      } else {
+        session = updateSession(ctx.db, message.payload.sessionId, {
+          providerId: message.payload.providerId,
+          modelId: message.payload.modelId,
+          permissionMode: message.payload.permissionMode,
+          bypassExpiresAt: message.payload.permissionMode !== undefined ? null : undefined,
+          bypassRunsRemaining: message.payload.permissionMode !== undefined ? null : undefined,
+        });
+      }
       if (session === undefined) {
         throw new HandlerError("not_found", "session not found");
       }
@@ -520,6 +584,11 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
           }
           void handleIncoming(ctx, relayClient, raw);
         },
+        onSealed: (next) => {
+          if (relayClient !== undefined) {
+            relayClient.relaySealKey = next.sealKey;
+          }
+        },
       });
       ctx.relay = handle;
       send(client, {
@@ -577,6 +646,60 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
+    case "estimate_prompt": {
+      send(client, { id: message.id, type: "prompt_estimate", payload: coachPrompt(message.payload.text) });
+      return;
+    }
+    case "watch_folder": {
+      if (ctx.folderWatch === null) {
+        throw new HandlerError("internal", "folder watch is not ready");
+      }
+      if (getWorkspace(ctx.db, message.payload.workspaceId) === undefined) {
+        throw new HandlerError("not_found", "workspace not found");
+      }
+      const watch = {
+        workspaceId: message.payload.workspaceId,
+        absPath: resolveUserFsPath(message.payload.absPath),
+        enabled: true,
+      };
+      ctx.folderWatch.start(watch);
+      const watches = listFolderWatches(ctx.db).filter(
+        (item) => !(item.workspaceId === watch.workspaceId && item.absPath === watch.absPath),
+      );
+      watches.push(watch);
+      saveFolderWatches(ctx.db, watches);
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "unwatch_folder": {
+      if (ctx.folderWatch === null) {
+        throw new HandlerError("internal", "folder watch is not ready");
+      }
+      const absPath = resolveUserFsPath(message.payload.absPath);
+      ctx.folderWatch.stop({ workspaceId: message.payload.workspaceId, absPath });
+      saveFolderWatches(
+        ctx.db,
+        listFolderWatches(ctx.db).filter(
+          (item) => !(item.workspaceId === message.payload.workspaceId && item.absPath === absPath),
+        ),
+      );
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "link_repository": {
+      const workspace = getWorkspace(ctx.db, message.payload.workspaceId);
+      if (workspace === undefined) {
+        throw new HandlerError("not_found", "workspace not found");
+      }
+      const parsed = parseRemote(message.payload.remoteUrl);
+      const result = setOriginRemote(workspace.absPath, parsed.remoteUrl);
+      if (!result.ok) {
+        throw new HandlerError("git", result.detail);
+      }
+      updateWorkspace(ctx.db, workspace.id, { gitRemote: parsed.remoteUrl });
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
     default: {
       const _never: never = message;
       throw new HandlerError("bad_request", `unhandled message ${JSON.stringify(_never)}`);
@@ -616,10 +739,15 @@ function listDirectory(absPath: string, allowedRoots: readonly string[]) {
 
 function health(_req: IncomingMessage, res: ServerResponse): void {
   res.writeHead(200, { "content-type": "application/json" });
-  res.end(JSON.stringify({ ok: true, clientVersion: CLIENT_VERSION }));
+  res.end(JSON.stringify({ ok: true, protocolVersion: PROTOCOL_VERSION }));
 }
 
 export function startServer(ctx: AppContext): Promise<{ port: number; close: () => Promise<void> }> {
+  ctx.folderWatch = new FolderWatchService(ctx.db, ctx.config, (event) => {
+    broadcast(ctx, { type: "sync_event", payload: event });
+  });
+  ctx.folderWatch.restore(listFolderWatches(ctx.db));
+
   const httpServer = createServer((req, res) => {
     if (req.method === "GET" && req.url === "/health") {
       health(req, res);
@@ -629,7 +757,33 @@ export function startServer(ctx: AppContext): Promise<{ port: number; close: () 
     res.end(JSON.stringify({ ok: false, error: "not found" }));
   });
 
-  const wss = new WebSocketServer({ server: httpServer });
+  const wss = new WebSocketServer({
+    server: httpServer,
+    verifyClient: (info, callback) => {
+      const address = httpServer.address();
+      const port = typeof address === "object" && address !== null ? address.port : ctx.config.port;
+      const url = new URL(info.req.url ?? "/", "http://127.0.0.1");
+      const decision = checkWebsocketUpgrade({
+        origin: info.req.headers.origin,
+        host: info.req.headers.host,
+        authorization: info.req.headers.authorization,
+        tokenQuery: url.searchParams.get("token") ?? undefined,
+        runnerToken: ctx.config.token,
+        policy: {
+          allowedOrigins: resolvedOrigins(ctx.config),
+          allowedHosts: resolvedHosts(ctx.config, port),
+        },
+      });
+      if (!decision.ok) {
+        callback(false, decision.status, decision.reason);
+        return;
+      }
+      if (decision.kind === "token-client") {
+        console.info("agentdeck: websocket upgrade from token-client (no Origin)");
+      }
+      callback(true);
+    },
+  });
   wss.on("connection", (ws) => {
     const client: Client = { ws, authed: false };
     ctx.clients.add(client);
@@ -658,6 +812,7 @@ export function startServer(ctx: AppContext): Promise<{ port: number; close: () 
         port,
         close: () =>
           new Promise((closeResolve) => {
+            ctx.folderWatch?.close();
             for (const client of ctx.clients) {
               client.ws.terminate();
             }

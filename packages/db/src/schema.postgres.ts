@@ -27,6 +27,8 @@ export const sessions = pgTable("sessions", {
   costUsd: real("cost_usd").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+  bypassExpiresAt: timestamp("bypass_expires_at", { withTimezone: true, mode: "date" }),
+  bypassRunsRemaining: integer("bypass_runs_remaining"),
 });
 
 export const events = pgTable(

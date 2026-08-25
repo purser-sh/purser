@@ -8,6 +8,13 @@
       "when": 1787414017146,
       "tag": "0000_lazy_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787419800000,
+      "tag": "0001_bypass_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import type {
   Session,
   StatePayload,
   StoredEvent,
+  SyncEventPayload,
   Workspace,
 } from "@agentdeck/protocol";
 import { create } from "zustand";
@@ -28,6 +29,7 @@ type DeckStore = StatePayload & {
   relayStatus: RelayStatusPayload | null;
   transcriptPartial: string;
   transcriptFinal: string;
+  lastSyncEvent: SyncEventPayload | null;
   voiceActive: boolean;
   setSearch: (value: string) => void;
   setConnection: (status: ConnectionStatus, detail?: string) => void;
@@ -62,6 +64,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   providerConfigs: [],
   voiceProfiles: [],
   settings: [],
+  folderWatches: [],
   selectedWorkspaceId: null,
   selectedSessionId: null,
   liveText: {},
@@ -72,6 +75,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   relayStatus: null,
   transcriptPartial: "",
   transcriptFinal: "",
+  lastSyncEvent: null,
   voiceActive: false,
   setSearch: (value) => set({ search: value }),
   setVoiceActive: (active) => set({ voiceActive: active }),
@@ -190,6 +194,13 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     }
     if (message.type === "tts_audio_chunk") {
       void playPcm16(message.payload.pcm16Base64, message.payload.sampleRate);
+      return;
+    }
+    if (message.type === "sync_event") {
+      set({ lastSyncEvent: message.payload });
+      return;
+    }
+    if (message.type === "prompt_estimate") {
       return;
     }
     if (message.type === "agent_event") {

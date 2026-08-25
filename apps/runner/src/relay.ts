@@ -1,10 +1,12 @@
 import { WebSocket } from "ws";
+import { deriveRelayKey, isSealedFrame, openSealed } from "@agentdeck/integrations";
 
 export type RelayHandle = {
   url: string;
   code: string;
   ws: WebSocket;
   connected: boolean;
+  sealKey?: CryptoKey;
 };
 
 export function connectRelay(input: {
@@ -13,11 +15,15 @@ export function connectRelay(input: {
   onOpen: (handle: RelayHandle) => void;
   onClose: (handle: RelayHandle) => void;
   onFrame: (raw: unknown) => void;
+  onSealed: (handle: RelayHandle) => void;
 }): RelayHandle {
   const ws = new WebSocket(input.url);
   const handle: RelayHandle = { url: input.url, code: input.code, ws, connected: false };
   ws.on("open", () => {
     handle.connected = true;
+    void deriveRelayKey(input.code).then((key) => {
+      handle.sealKey = key;
+    });
     ws.send(JSON.stringify({ type: "pair", role: "runner", code: input.code }));
     input.onOpen(handle);
   });
@@ -29,15 +35,18 @@ export function connectRelay(input: {
     } catch {
       return;
     }
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      "type" in parsed &&
-      ((parsed as { type: unknown }).type === "pair_ok" || (parsed as { type: unknown }).type === "pair")
-    ) {
+    if (isPairOk(parsed)) {
+      void ensureSealKey(handle, input.code).then(() => input.onSealed(handle));
       return;
     }
-    input.onFrame(parsed);
+    if (isSealedFrame(parsed)) {
+      const key = handle.sealKey;
+      if (key === undefined) {
+        return;
+      }
+      void openSealed(key, parsed).then((opened) => input.onFrame(opened));
+      return;
+    }
   });
   ws.on("close", () => {
     handle.connected = false;
@@ -48,4 +57,15 @@ export function connectRelay(input: {
     input.onClose(handle);
   });
   return handle;
+}
+
+async function ensureSealKey(handle: RelayHandle, code: string): Promise<void> {
+  if (handle.sealKey !== undefined) {
+    return;
+  }
+  handle.sealKey = await deriveRelayKey(code);
+}
+
+function isPairOk(value: unknown): boolean {
+  return value !== null && typeof value === "object" && "type" in value && value.type === "pair_ok";
 }

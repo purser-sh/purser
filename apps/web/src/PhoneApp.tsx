@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { BypassBanner } from "@/components/BypassBanner";
 import { ChatPane } from "@/components/ChatPane";
+import { FolderPicker } from "@/components/FolderPicker";
 import { LeftRail } from "@/components/LeftRail";
 import { RightPanel } from "@/components/RightPanel";
 import { TopBar } from "@/components/TopBar";
@@ -16,9 +18,10 @@ export function PhoneApp() {
   const [relayUrl, setRelayUrl] = useState("ws://127.0.0.1:7430");
   const [code, setCode] = useState("");
   const [paired, setPaired] = useState(false);
+  const [picker, setPicker] = useState(false);
 
   const client = useMemo(() => {
-    if (!paired || code.length < 4) {
+    if (!paired || code.length < 8) {
       return null;
     }
     return new RunnerClient(
@@ -46,7 +49,7 @@ export function PhoneApp() {
           </p>
           <Input className="mt-3" onChange={(event) => setRelayUrl(event.target.value)} value={relayUrl} />
           <Input className="mt-2" onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="CODE" value={code} />
-          <Button className="mt-3 w-full" onClick={() => setPaired(true)} type="button">
+          <Button className="mt-3 w-full" disabled={code.length < 8} onClick={() => setPaired(true)} type="button">
             Connect
           </Button>
         </div>
@@ -57,13 +60,15 @@ export function PhoneApp() {
   return (
     <ClientProvider value={client}>
       <div className="flex h-full flex-col">
-        <TopBar onNewWorkspace={() => undefined} onSettings={() => undefined} />
+        <TopBar onNewWorkspace={() => setPicker(true)} onSettings={() => undefined} />
+        <BypassBanner />
         <p className="bg-card px-3 py-1 text-center text-[11px] text-muted-foreground">{connection}</p>
         <div className="flex min-h-0 flex-1">
-          <LeftRail />
-          <ChatPane />
-          <RightPanel />
+          <LeftRail onOpenWorkspace={() => setPicker(true)} />
+          <ChatPane onOpenWorkspace={() => setPicker(true)} />
+          <RightPanel onOpenWorkspace={() => setPicker(true)} />
         </div>
+        <FolderPicker onClose={() => setPicker(false)} open={picker} />
       </div>
     </ClientProvider>
   );

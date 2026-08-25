@@ -44,6 +44,7 @@ export {
   IsoDateTimeSchema,
   IdSchema,
   AbsolutePathSchema,
+  UserFsPathSchema,
   WorkspaceRelativePathSchema,
 } from "./primitives.ts";
 
@@ -59,6 +60,7 @@ export {
   SettingSchema,
   ModelInfoSchema,
   FsEntrySchema,
+  FolderWatchSchema,
   type Workspace,
   type Session,
   type UserMessagePayload,
@@ -70,6 +72,7 @@ export {
   type Setting,
   type ModelInfo,
   type FsEntry,
+  type FolderWatch,
 } from "./entities.ts";
 
 export {
@@ -97,6 +100,10 @@ export {
   UpsertProviderConfigPayloadSchema,
   UpsertVoiceProfilePayloadSchema,
   PairRelayPayloadSchema,
+  EstimatePromptPayloadSchema,
+  WatchFolderPayloadSchema,
+  UnwatchFolderPayloadSchema,
+  LinkRepositoryPayloadSchema,
   type HelloPayload,
   type GetStatePayload,
   type CreateWorkspacePayload,
@@ -121,6 +128,10 @@ export {
   type UpsertProviderConfigPayload,
   type UpsertVoiceProfilePayload,
   type PairRelayPayload,
+  type EstimatePromptPayload,
+  type WatchFolderPayload,
+  type UnwatchFolderPayload,
+  type LinkRepositoryPayload,
 } from "./client-payloads.ts";
 
 export {
@@ -140,6 +151,8 @@ export {
   TtsAudioChunkPayloadSchema,
   ErrorPayloadSchema,
   RelayStatusPayloadSchema,
+  PromptEstimatePayloadSchema,
+  SyncEventPayloadSchema,
   type StatePayload,
   type WorkspaceCreatedPayload,
   type SessionCreatedPayload,
@@ -156,6 +169,8 @@ export {
   type TtsAudioChunkPayload,
   type ErrorPayload,
   type RelayStatusPayload,
+  type PromptEstimatePayload,
+  type SyncEventPayload,
 } from "./server-payloads.ts";
 
 export { FrameEnvelopeSchema, type FrameEnvelope } from "./envelope.ts";

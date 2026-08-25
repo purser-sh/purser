@@ -24,6 +24,10 @@ import {
   UpsertProviderConfigPayloadSchema,
   UpsertVoiceProfilePayloadSchema,
   PairRelayPayloadSchema,
+  EstimatePromptPayloadSchema,
+  WatchFolderPayloadSchema,
+  UnwatchFolderPayloadSchema,
+  LinkRepositoryPayloadSchema,
 } from "./client-payloads.ts";
 import { IdSchema } from "./primitives.ts";
 
@@ -97,6 +101,10 @@ export const ClientUpsertVoiceProfileMessageSchema = clientFrame(
   UpsertVoiceProfilePayloadSchema,
 );
 export const ClientPairRelayMessageSchema = clientFrame("pair_relay", PairRelayPayloadSchema);
+export const ClientEstimatePromptMessageSchema = clientFrame("estimate_prompt", EstimatePromptPayloadSchema);
+export const ClientWatchFolderMessageSchema = clientFrame("watch_folder", WatchFolderPayloadSchema);
+export const ClientUnwatchFolderMessageSchema = clientFrame("unwatch_folder", UnwatchFolderPayloadSchema);
+export const ClientLinkRepositoryMessageSchema = clientFrame("link_repository", LinkRepositoryPayloadSchema);
 
 export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientHelloMessageSchema,
@@ -123,6 +131,10 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientUpsertProviderConfigMessageSchema,
   ClientUpsertVoiceProfileMessageSchema,
   ClientPairRelayMessageSchema,
+  ClientEstimatePromptMessageSchema,
+  ClientWatchFolderMessageSchema,
+  ClientUnwatchFolderMessageSchema,
+  ClientLinkRepositoryMessageSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;

@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
+import { PairingDesk, type PairRole } from "@agentdeck/integrations";
 
 type Room = {
   runner?: WebSocket;
@@ -7,8 +8,24 @@ type Room = {
 };
 
 const rooms = new Map<string, Room>();
-const PORT = Number(process.env.AGENTDECK_RELAY_PORT ?? 7430);
-const HOST = process.env.AGENTDECK_RELAY_HOST ?? "127.0.0.1";
+const desk = new PairingDesk();
+
+function isPairRole(value: string): value is PairRole {
+  return value === "runner" || value === "phone";
+}
+
+function isPairMessage(value: unknown): value is { type: "pair"; code: string; role: string } {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  if (!("type" in value) || value.type !== "pair") {
+    return false;
+  }
+  if (!("code" in value) || !("role" in value)) {
+    return false;
+  }
+  return typeof value.code === "string" && typeof value.role === "string";
+}
 
 function peerOf(room: Room, ws: WebSocket): WebSocket | undefined {
   if (room.runner === ws) return room.phone;
@@ -30,59 +47,78 @@ function drop(ws: WebSocket): void {
   }
 }
 
-const httpServer = createServer((_req, res) => {
-  res.writeHead(200, { "content-type": "application/json" });
-  res.end(JSON.stringify({ ok: true, service: "agentdeck-relay" }));
-});
-
-const wss = new WebSocketServer({ server: httpServer });
-wss.on("connection", (ws) => {
-  let code: string | null = null;
-  ws.on("message", (data) => {
-    const text = typeof data === "string" ? data : data.toString();
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return;
-    }
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      "type" in parsed &&
-      (parsed as { type: unknown }).type === "pair" &&
-      "code" in parsed &&
-      "role" in parsed
-    ) {
-      const nextCode = String((parsed as { code: unknown }).code);
-      const role = String((parsed as { role: unknown }).role);
-      code = nextCode;
-      const room = rooms.get(nextCode) ?? {};
-      if (role === "runner") {
-        room.runner = ws;
-      } else {
-        room.phone = ws;
-      }
-      rooms.set(nextCode, room);
-      ws.send(JSON.stringify({ type: "pair_ok", code: nextCode }));
-      return;
-    }
-    if (code === null) {
-      return;
-    }
-    const room = rooms.get(code);
-    if (room === undefined) {
-      return;
-    }
-    const other = peerOf(room, ws);
-    if (other !== undefined && other.readyState === WebSocket.OPEN) {
-      other.send(text);
-    }
+export function startRelay(host: string, port: number): ReturnType<typeof createServer> {
+  const httpServer = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true, service: "agentdeck-relay" }));
   });
-  ws.on("close", () => drop(ws));
-});
 
-httpServer.listen(PORT, HOST, () => {
+  const wss = new WebSocketServer({ server: httpServer });
+  wss.on("connection", (ws, req) => {
+    let code: string | null = null;
+    const source = req.socket.remoteAddress ?? "unknown";
+    ws.on("message", (data) => {
+      const text = typeof data === "string" ? data : data.toString();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return;
+      }
+      if (isPairMessage(parsed)) {
+        if (!isPairRole(parsed.role)) {
+          ws.send(JSON.stringify({ type: "pair_error", reason: "invalid role" }));
+          return;
+        }
+        const result = desk.pair(parsed.code, parsed.role, source);
+        if (!result.ok) {
+          ws.send(JSON.stringify({ type: "pair_error", reason: result.reason }));
+          return;
+        }
+        code = result.code;
+        const room = rooms.get(result.code) ?? {};
+        if (parsed.role === "runner") {
+          room.runner = ws;
+        } else {
+          room.phone = ws;
+        }
+        rooms.set(result.code, room);
+        if (!result.complete) {
+          return;
+        }
+        const payload = JSON.stringify({ type: "pair_ok", code: result.code });
+        if (room.runner !== undefined && room.runner.readyState === WebSocket.OPEN) {
+          room.runner.send(payload);
+        }
+        if (room.phone !== undefined && room.phone.readyState === WebSocket.OPEN) {
+          room.phone.send(payload);
+        }
+        return;
+      }
+      if (code === null) {
+        return;
+      }
+      const room = rooms.get(code);
+      if (room === undefined) {
+        return;
+      }
+      const other = peerOf(room, ws);
+      if (other !== undefined && other.readyState === WebSocket.OPEN) {
+        other.send(text);
+      }
+    });
+    ws.on("close", () => drop(ws));
+  });
+
+  httpServer.listen(port, host);
+  return httpServer;
+}
+
+const PORT = Number(process.env.AGENTDECK_RELAY_PORT ?? 7430);
+const HOST = process.env.AGENTDECK_RELAY_HOST ?? "127.0.0.1";
+
+if (import.meta.main) {
+  startRelay(HOST, PORT);
   console.log(`AgentDeck relay on ws://${HOST}:${PORT}`);
-  console.log("Stores nothing. Pair a runner and a phone with the same code.");
-});
+  console.log("Forwards frames; does not store them. After pairing, phone and companion seal payloads with HKDF(code) so the relay carries ciphertext.");
+}

@@ -1,12 +1,13 @@
-import { readFileSync } from "node:fs";
-import os from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
+import { handleAgentdeckConfigRoute } from "./src/lib/dev-config.ts";
 
-function agentdeckConfigPlugin(): Plugin {
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+function agentdeckConfigPlugin(mode: string): Plugin {
   return {
     name: "agentdeck-config",
     configureServer(server) {
@@ -16,38 +17,36 @@ function agentdeckConfigPlugin(): Plugin {
         }
         next();
       });
-      server.middlewares.use("/__agentdeck/config", (_req, res) => {
-        const configFile = path.join(os.homedir(), ".agentdeck", "config.json");
-        try {
-          const raw = readFileSync(configFile, "utf8");
-          const parsed = JSON.parse(raw) as { token?: string; port?: number; allowedRoots?: string[] };
-          res.setHeader("content-type", "application/json");
-          res.end(
-            JSON.stringify({
-              wsUrl: `ws://127.0.0.1:${parsed.port ?? 7420}`,
-              token: parsed.token ?? "",
-              allowedRoots: parsed.allowedRoots ?? [],
-            }),
-          );
-        } catch {
+      server.middlewares.use("/__agentdeck/config", (req, res) => {
+        if (mode !== "development") {
           res.statusCode = 404;
           res.setHeader("content-type", "application/json");
-          res.end(JSON.stringify({ error: "runner config not found" }));
+          res.setHeader("cache-control", "no-store");
+          res.end(JSON.stringify({ error: "not found" }));
+          return;
         }
+        handleAgentdeckConfigRoute({ mode, req, res, repoRoot });
+      });
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use("/__agentdeck/config", (_req, res) => {
+        res.statusCode = 404;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: "not found" }));
       });
     },
   };
 }
 
-export default defineConfig({
-  plugins: [react(), tailwindcss(), agentdeckConfigPlugin()],
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), tailwindcss(), agentdeckConfigPlugin(mode)],
   resolve: {
     alias: {
       "@": path.resolve(path.dirname(fileURLToPath(import.meta.url)), "./src"),
     },
   },
   server: {
-    port: 5173,
+    port: 7410,
     strictPort: true,
   },
-});
+}));

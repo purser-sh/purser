@@ -10,6 +10,7 @@ import {
   StoredEventSchema,
   VoiceProfileSchema,
   WorkspaceSchema,
+  FolderWatchSchema,
 } from "./entities.ts";
 import { FileEncodingSchema, RunStatusSchema } from "./enums.ts";
 import { AbsolutePathSchema, IdSchema } from "./primitives.ts";
@@ -23,6 +24,7 @@ export const StatePayloadSchema = z
     providerConfigs: z.array(ProviderConfigSchema),
     voiceProfiles: z.array(VoiceProfileSchema),
     settings: z.array(SettingSchema),
+    folderWatches: z.array(FolderWatchSchema).default([]),
   })
   .strict();
 export type StatePayload = z.infer<typeof StatePayloadSchema>;
@@ -147,3 +149,25 @@ export const RelayStatusPayloadSchema = z
   })
   .strict();
 export type RelayStatusPayload = z.infer<typeof RelayStatusPayloadSchema>;
+
+export const PromptEstimatePayloadSchema = z
+  .object({
+    tokens: z.number().int().nonnegative(),
+    compactText: z.string(),
+    compactTokens: z.number().int().nonnegative(),
+    savedTokens: z.number().int(),
+    notes: z.array(z.string()),
+  })
+  .strict();
+export type PromptEstimatePayload = z.infer<typeof PromptEstimatePayloadSchema>;
+
+export const SyncEventPayloadSchema = z
+  .object({
+    workspaceId: IdSchema,
+    sourcePath: AbsolutePathSchema,
+    destPath: z.string().min(1),
+    action: z.enum(["added", "updated", "removed", "error"]),
+    detail: z.string().optional(),
+  })
+  .strict();
+export type SyncEventPayload = z.infer<typeof SyncEventPayloadSchema>;

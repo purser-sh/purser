@@ -22,7 +22,7 @@ function downsample(input: Float32Array, fromRate: number, toRate: number): Int1
   return out;
 }
 
-export function VoiceButton() {
+export function VoiceButton(props: { compact?: boolean }) {
   const client = useRunner();
   const profiles = useDeckStore((state) => state.voiceProfiles);
   const voiceActive = useDeckStore((state) => state.voiceActive);
@@ -80,13 +80,13 @@ export function VoiceButton() {
           void start();
         }
       }}
-      size="sm"
-      title="Hold to talk. Local commands: stop, cancel, repeat, approve, reject."
+      size={props.compact ? "icon" : "sm"}
+      title="Talk to the agent. Local commands: stop, cancel, repeat, approve, reject."
       type="button"
       variant={voiceActive ? "destructive" : "outline"}
     >
       {voiceActive ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-      {defaultProfile?.name ?? "Voice"}
+      {props.compact ? null : (defaultProfile?.name ?? "Voice")}
     </Button>
   );
 }

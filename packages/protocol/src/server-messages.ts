@@ -17,6 +17,8 @@ import {
   TtsAudioChunkPayloadSchema,
   WorkspaceCreatedPayloadSchema,
   RelayStatusPayloadSchema,
+  PromptEstimatePayloadSchema,
+  SyncEventPayloadSchema,
 } from "./server-payloads.ts";
 
 function serverFrame<TType extends string, TPayload extends z.ZodType>(
@@ -69,6 +71,8 @@ export const ServerTtsAudioChunkMessageSchema = serverFrame(
 );
 export const ServerErrorMessageSchema = serverFrame("error", ErrorPayloadSchema);
 export const ServerRelayStatusMessageSchema = serverFrame("relay_status", RelayStatusPayloadSchema);
+export const ServerPromptEstimateMessageSchema = serverFrame("prompt_estimate", PromptEstimatePayloadSchema);
+export const ServerSyncEventMessageSchema = serverFrame("sync_event", SyncEventPayloadSchema);
 
 export const ServerMessageSchema = z.discriminatedUnion("type", [
   ServerStateMessageSchema,
@@ -87,6 +91,8 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   ServerTtsAudioChunkMessageSchema,
   ServerErrorMessageSchema,
   ServerRelayStatusMessageSchema,
+  ServerPromptEstimateMessageSchema,
+  ServerSyncEventMessageSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;

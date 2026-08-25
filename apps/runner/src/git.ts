@@ -42,3 +42,19 @@ export function detectGitBranch(absPath: string): string | null {
   const branch = result.stdout.trim();
   return branch.length > 0 ? branch : null;
 }
+
+export function setOriginRemote(absPath: string, remoteUrl: string): { ok: boolean; detail: string } {
+  if (!isGitRepo(absPath)) {
+    return { ok: false, detail: "folder is not a git repository" };
+  }
+  const current = detectGitRemote(absPath);
+  const args =
+    current === null
+      ? (["-C", absPath, "remote", "add", "origin", remoteUrl] as const)
+      : (["-C", absPath, "remote", "set-url", "origin", remoteUrl] as const);
+  const result = spawnSync("git", [...args], { encoding: "utf8" });
+  if (result.status !== 0) {
+    return { ok: false, detail: (result.stderr || result.stdout).trim() || "git remote failed" };
+  }
+  return { ok: true, detail: remoteUrl };
+}

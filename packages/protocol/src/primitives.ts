@@ -12,6 +12,14 @@ export const AbsolutePathSchema = z
     message: "path must be absolute",
   });
 
+/** Absolute path or `~/...`. The runner expands `~` before touching disk. */
+export const UserFsPathSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value.startsWith("/") || value === "~" || value.startsWith("~/"), {
+    message: "path must be absolute or start with ~/",
+  });
+
 export const WorkspaceRelativePathSchema = z
   .string()
   .min(1)

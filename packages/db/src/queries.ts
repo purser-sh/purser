@@ -1,6 +1,7 @@
 import { asc, eq, max } from "drizzle-orm";
 import type {
   EventRole,
+  FolderWatch,
   PermissionMode,
   ProviderConfig,
   Run,
@@ -52,6 +53,8 @@ function mapSession(row: typeof sessions.$inferSelect): Session {
     tokensIn: row.tokensIn,
     tokensOut: row.tokensOut,
     costUsd: row.costUsd,
+    bypassExpiresAt: row.bypassExpiresAt ? toIso(row.bypassExpiresAt) : null,
+    bypassRunsRemaining: row.bypassRunsRemaining ?? null,
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
   };
@@ -198,7 +201,13 @@ export function loadState(db: AppDatabase): StatePayload {
     runs: db.select().from(runs).orderBy(asc(runs.startedAt)).all().map(mapRun),
     providerConfigs: db.select().from(providerConfigs).all().map(mapProviderConfig),
     voiceProfiles: db.select().from(voiceProfiles).all().map(mapVoiceProfile),
-    settings: db.select().from(settings).all().map(mapSetting),
+    settings: db
+      .select()
+      .from(settings)
+      .all()
+      .map(mapSetting)
+      .filter((setting) => setting.key !== FOLDER_WATCHES_KEY),
+    folderWatches: listFolderWatches(db),
   };
 }
 
@@ -256,6 +265,8 @@ export function insertSession(
     tokensIn: 0,
     tokensOut: 0,
     costUsd: 0,
+    bypassExpiresAt: null,
+    bypassRunsRemaining: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -282,6 +293,8 @@ export function updateSession(
     tokensIn?: number;
     tokensOut?: number;
     costUsd?: number;
+    bypassExpiresAt?: string | null;
+    bypassRunsRemaining?: number | null;
   },
 ): Session | undefined {
   const current = db.select().from(sessions).where(eq(sessions.id, sessionId)).get();
@@ -299,6 +312,10 @@ export function updateSession(
   if (patch.tokensIn !== undefined) setValues.tokensIn = patch.tokensIn;
   if (patch.tokensOut !== undefined) setValues.tokensOut = patch.tokensOut;
   if (patch.costUsd !== undefined) setValues.costUsd = patch.costUsd;
+  if (patch.bypassExpiresAt !== undefined) {
+    setValues.bypassExpiresAt = patch.bypassExpiresAt === null ? null : new Date(patch.bypassExpiresAt);
+  }
+  if (patch.bypassRunsRemaining !== undefined) setValues.bypassRunsRemaining = patch.bypassRunsRemaining;
   db.update(sessions).set(setValues).where(eq(sessions.id, sessionId)).run();
   return getSession(db, sessionId);
 }
@@ -505,4 +522,54 @@ export function upsertSetting(db: AppDatabase, key: string, value: unknown): Set
     db.update(settings).set({ value }).where(eq(settings.key, key)).run();
   }
   return { key, value };
+}
+
+const FOLDER_WATCHES_KEY = "folder_watches";
+
+export function listFolderWatches(db: AppDatabase): FolderWatch[] {
+  const row = db.select().from(settings).where(eq(settings.key, FOLDER_WATCHES_KEY)).get();
+  if (row === undefined) {
+    return [];
+  }
+  if (!Array.isArray(row.value)) {
+    return [];
+  }
+  const out: FolderWatch[] = [];
+  for (const item of row.value) {
+    if (
+      item !== null &&
+      typeof item === "object" &&
+      "workspaceId" in item &&
+      "absPath" in item &&
+      typeof (item as { workspaceId: unknown }).workspaceId === "string" &&
+      typeof (item as { absPath: unknown }).absPath === "string"
+    ) {
+      out.push({
+        workspaceId: (item as { workspaceId: string }).workspaceId,
+        absPath: (item as { absPath: string }).absPath,
+        enabled: (item as { enabled?: unknown }).enabled !== false,
+      });
+    }
+  }
+  return out;
+}
+
+export function saveFolderWatches(db: AppDatabase, watches: FolderWatch[]): FolderWatch[] {
+  upsertSetting(db, FOLDER_WATCHES_KEY, watches);
+  return watches;
+}
+
+export function updateWorkspace(
+  db: AppDatabase,
+  workspaceId: string,
+  patch: { gitRemote?: string | null },
+): Workspace | undefined {
+  const current = db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).get();
+  if (current === undefined) {
+    return undefined;
+  }
+  if (patch.gitRemote !== undefined) {
+    db.update(workspaces).set({ gitRemote: patch.gitRemote }).where(eq(workspaces.id, workspaceId)).run();
+  }
+  return getWorkspace(db, workspaceId);
 }

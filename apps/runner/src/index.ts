@@ -13,6 +13,7 @@ const ctx: AppContext = {
   pendingPermissions: new Map(),
   relay: null,
   voice: null,
+  folderWatch: null,
 };
 
 const { port } = await startServer(ctx);

@@ -6,6 +6,7 @@ import {
   insertSession,
   insertWorkspace,
   loadState,
+  saveFolderWatches,
   seedDefaults,
   updateSession,
 } from "./queries.ts";
@@ -57,6 +58,23 @@ describe("sqlite core", () => {
     expect(state.events[1]?.seq).toBe(1);
     expect(state.providerConfigs.some((config) => config.providerId === "echo")).toBe(true);
     expect(state.settings.some((setting) => setting.key === "theme")).toBe(true);
+    expect(state.folderWatches).toEqual([]);
+  });
+
+  test("persists folder watches without leaking them into settings", async () => {
+    const db = openMemory();
+    await seedDefaults(db);
+    const workspace = insertWorkspace(db, {
+      name: "AgentDeck",
+      absPath: "/home/aksingh/AgentDeck",
+      gitRemote: null,
+    });
+    saveFolderWatches(db, [{ workspaceId: workspace.id, absPath: "/home/aksingh/xyz", enabled: true }]);
+    const state = loadState(db);
+    expect(state.folderWatches).toEqual([
+      { workspaceId: workspace.id, absPath: "/home/aksingh/xyz", enabled: true },
+    ]);
+    expect(state.settings.some((setting) => setting.key === "folder_watches")).toBe(false);
   });
 
   test("rejects postgres urls", () => {

@@ -26,4 +26,7 @@ export {
   upsertProviderConfig,
   upsertVoiceProfile,
   upsertSetting,
+  listFolderWatches,
+  saveFolderWatches,
+  updateWorkspace,
 } from "./queries.ts";

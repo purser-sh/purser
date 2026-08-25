@@ -1,9 +1,11 @@
 import { PROTOCOL_VERSION, parseServerMessage, type ClientMessage, type ServerMessage } from "@agentdeck/protocol";
+import { deriveRelayKey, isSealedFrame, openSealed, sealJson } from "@agentdeck/integrations";
 
 export type Bootstrap = {
   wsUrl: string;
   token: string;
   allowedRoots: string[];
+  defaultWorkspace?: { name: string; absPath: string };
   pair?: { role: "phone" | "runner"; code: string };
 };
 
@@ -12,11 +14,22 @@ export async function fetchBootstrap(): Promise<Bootstrap> {
   if (!response.ok) {
     throw new Error("Runner is not running. Start it with bun run dev.");
   }
-  const body = (await response.json()) as Partial<Bootstrap>;
+  const body: unknown = await response.json();
+  const record = isRecord(body) ? body : {};
+  const defaultWorkspaceRaw = record.defaultWorkspace;
+  const defaultWorkspace =
+    isRecord(defaultWorkspaceRaw) &&
+    typeof defaultWorkspaceRaw.name === "string" &&
+    typeof defaultWorkspaceRaw.absPath === "string"
+      ? { name: defaultWorkspaceRaw.name, absPath: defaultWorkspaceRaw.absPath }
+      : undefined;
   return {
-    wsUrl: body.wsUrl ?? "ws://127.0.0.1:7420",
-    token: body.token ?? "",
-    allowedRoots: body.allowedRoots ?? [],
+    wsUrl: typeof record.wsUrl === "string" ? record.wsUrl : "ws://127.0.0.1:7420",
+    token: typeof record.token === "string" ? record.token : "",
+    allowedRoots: Array.isArray(record.allowedRoots)
+      ? record.allowedRoots.filter((item): item is string => typeof item === "string")
+      : [],
+    defaultWorkspace,
   };
 }
 
@@ -30,6 +43,7 @@ export class RunnerClient {
   private pending = new Map<string, Pending>();
   private closedByUs = false;
   private attempt = 0;
+  private sealKey: CryptoKey | undefined;
 
   constructor(
     readonly bootstrap: Bootstrap,
@@ -52,56 +66,42 @@ export class RunnerClient {
     payload: Extract<ClientMessage, { type: T }>["payload"],
   ): Promise<ServerMessage> {
     const id = crypto.randomUUID();
-    const frame = { id, type, payload } as ClientMessage;
+    const frame = { id, type, payload };
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      if (this.ws === undefined || this.ws.readyState !== WebSocket.OPEN) {
+      void this.sendJson(frame).catch((error: unknown) => {
         this.pending.delete(id);
-        reject(new Error("not connected"));
-        return;
-      }
-      this.ws.send(JSON.stringify(frame));
+        reject(error instanceof Error ? error : new Error("send failed"));
+      });
     });
+  }
+
+  private async sendJson(value: unknown): Promise<void> {
+    if (this.ws === undefined || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error("not connected");
+    }
+    if (this.sealKey !== undefined) {
+      const sealed = await sealJson(this.sealKey, value);
+      this.ws.send(JSON.stringify(sealed));
+      return;
+    }
+    this.ws.send(JSON.stringify(value));
   }
 
   private open(): void {
     this.onStatus("connecting");
     const ws = new WebSocket(this.bootstrap.wsUrl);
     this.ws = ws;
+    this.sealKey = undefined;
     ws.addEventListener("open", () => {
       if (this.bootstrap.pair !== undefined) {
         ws.send(JSON.stringify({ type: "pair", role: this.bootstrap.pair.role, code: this.bootstrap.pair.code }));
-      }
-      void this.request("hello", {
-        token: this.bootstrap.token,
-        clientVersion: "0.1.0",
-        protocolVersion: PROTOCOL_VERSION,
-      })
-        .then(() => {
-          this.attempt = 0;
-          this.onStatus("ready");
-        })
-        .catch((error: unknown) => {
-          this.onStatus("error", error instanceof Error ? error.message : "hello failed");
-        });
-    });
-    ws.addEventListener("message", (event) => {
-      let parsed: ServerMessage;
-      try {
-        parsed = parseServerMessage(JSON.parse(String(event.data)));
-      } catch {
         return;
       }
-      const waiter = this.pending.get(parsed.id);
-      if (waiter) {
-        this.pending.delete(parsed.id);
-        if (parsed.type === "error") {
-          waiter.reject(new Error(parsed.payload.message));
-        } else {
-          waiter.resolve(parsed);
-        }
-      }
-      this.onMessage(parsed);
+      void this.hello();
+    });
+    ws.addEventListener("message", (event) => {
+      void this.onSocketMessage(String(event.data));
     });
     ws.addEventListener("close", () => {
       for (const [id, waiter] of this.pending) {
@@ -116,4 +116,64 @@ export class RunnerClient {
       }
     });
   }
+
+  private async onSocketMessage(text: string): Promise<void> {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (isPairOk(parsed)) {
+      if (this.bootstrap.pair !== undefined) {
+        this.sealKey = await deriveRelayKey(this.bootstrap.pair.code);
+        await this.hello();
+      }
+      return;
+    }
+    if (isSealedFrame(parsed)) {
+      if (this.sealKey === undefined) {
+        return;
+      }
+      parsed = await openSealed(this.sealKey, parsed);
+    }
+    let message: ServerMessage;
+    try {
+      message = parseServerMessage(parsed);
+    } catch {
+      return;
+    }
+    const waiter = this.pending.get(message.id);
+    if (waiter) {
+      this.pending.delete(message.id);
+      if (message.type === "error") {
+        waiter.reject(new Error(message.payload.message));
+      } else {
+        waiter.resolve(message);
+      }
+    }
+    this.onMessage(message);
+  }
+
+  private async hello(): Promise<void> {
+    try {
+      await this.request("hello", {
+        token: this.bootstrap.token,
+        clientVersion: "0.1.0",
+        protocolVersion: PROTOCOL_VERSION,
+      });
+      this.attempt = 0;
+      this.onStatus("ready");
+    } catch (error: unknown) {
+      this.onStatus("error", error instanceof Error ? error.message : "hello failed");
+    }
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isPairOk(value: unknown): boolean {
+  return isRecord(value) && value.type === "pair_ok";
 }

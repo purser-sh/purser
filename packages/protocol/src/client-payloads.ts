@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { PROTOCOL_VERSION } from "./constants.ts";
 import { PermissionModeSchema, VoiceInputModeSchema } from "./enums.ts";
-import { AbsolutePathSchema, IdSchema, WorkspaceRelativePathSchema } from "./primitives.ts";
+import { AbsolutePathSchema, IdSchema, UserFsPathSchema, WorkspaceRelativePathSchema } from "./primitives.ts";
 
 export const HelloPayloadSchema = z
   .object({
@@ -191,7 +191,40 @@ export type UpsertVoiceProfilePayload = z.infer<typeof UpsertVoiceProfilePayload
 export const PairRelayPayloadSchema = z
   .object({
     relayUrl: z.string().min(1),
-    code: z.string().min(4),
+    code: z.string().min(8),
   })
   .strict();
 export type PairRelayPayload = z.infer<typeof PairRelayPayloadSchema>;
+
+export const EstimatePromptPayloadSchema = z
+  .object({
+    text: z.string().min(1),
+    sessionId: IdSchema.optional(),
+  })
+  .strict();
+export type EstimatePromptPayload = z.infer<typeof EstimatePromptPayloadSchema>;
+
+export const WatchFolderPayloadSchema = z
+  .object({
+    workspaceId: IdSchema,
+    absPath: UserFsPathSchema,
+  })
+  .strict();
+export type WatchFolderPayload = z.infer<typeof WatchFolderPayloadSchema>;
+
+export const UnwatchFolderPayloadSchema = z
+  .object({
+    workspaceId: IdSchema,
+    absPath: UserFsPathSchema,
+  })
+  .strict();
+export type UnwatchFolderPayload = z.infer<typeof UnwatchFolderPayloadSchema>;
+
+export const LinkRepositoryPayloadSchema = z
+  .object({
+    workspaceId: IdSchema,
+    remoteUrl: z.string().min(1),
+    forge: z.enum(["github", "gitlab", "other"]).optional(),
+  })
+  .strict();
+export type LinkRepositoryPayload = z.infer<typeof LinkRepositoryPayloadSchema>;

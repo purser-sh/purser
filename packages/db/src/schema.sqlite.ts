@@ -27,6 +27,8 @@ export const sessions = sqliteTable("sessions", {
   costUsd: real("cost_usd").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  bypassExpiresAt: integer("bypass_expires_at", { mode: "timestamp_ms" }),
+  bypassRunsRemaining: integer("bypass_runs_remaining"),
 });
 
 export const events = sqliteTable(

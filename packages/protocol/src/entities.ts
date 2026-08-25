@@ -28,6 +28,8 @@ export const SessionSchema = z
     tokensIn: z.number().nonnegative(),
     tokensOut: z.number().nonnegative(),
     costUsd: z.number().nonnegative(),
+    bypassExpiresAt: IsoDateTimeSchema.nullable(),
+    bypassRunsRemaining: z.number().int().nonnegative().nullable(),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -128,3 +130,12 @@ export const FsEntrySchema = z
   })
   .strict();
 export type FsEntry = z.infer<typeof FsEntrySchema>;
+
+export const FolderWatchSchema = z
+  .object({
+    workspaceId: IdSchema,
+    absPath: AbsolutePathSchema,
+    enabled: z.boolean(),
+  })
+  .strict();
+export type FolderWatch = z.infer<typeof FolderWatchSchema>;

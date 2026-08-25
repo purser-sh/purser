@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { BypassBanner } from "@/components/BypassBanner";
 import { ChatPane } from "@/components/ChatPane";
 import { FolderPicker } from "@/components/FolderPicker";
 import { LeftRail } from "@/components/LeftRail";
@@ -59,13 +60,14 @@ export function App() {
     <ClientProvider value={client}>
       <div className="flex h-full flex-col">
         <TopBar onNewWorkspace={() => setPicker(true)} onSettings={() => setSettings(true)} />
+        <BypassBanner />
         {connection === "error" && connectionDetail !== null ? (
           <div className="bg-amber-950 px-4 py-1 text-center text-xs text-amber-200">{connectionDetail}</div>
         ) : null}
         <div className="flex min-h-0 flex-1">
-          <LeftRail />
-          <ChatPane />
-          <RightPanel />
+          <LeftRail onOpenWorkspace={() => setPicker(true)} />
+          <ChatPane onOpenWorkspace={() => setPicker(true)} />
+          <RightPanel onOpenWorkspace={() => setPicker(true)} />
         </div>
         <FolderPicker onClose={() => setPicker(false)} open={picker} />
         <Dialog onClose={() => setSettings(false)} open={settings} title="Settings">

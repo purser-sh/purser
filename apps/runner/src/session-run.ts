@@ -13,6 +13,8 @@ import { getAdapter } from "./registry.ts";
 import { appendRunLog } from "./run-log.ts";
 import { getSecret } from "./secrets.ts";
 import { buildExtraPrompt } from "./skills.ts";
+import { appendAudit } from "./audit.ts";
+import { agentdeckDir } from "./config.ts";
 
 const SKIP_PERSIST = new Set<AgentEvent["kind"]>(["text_delta"]);
 
@@ -107,6 +109,20 @@ export async function executeRun(input: {
         });
       }
 
+      if (event.kind === "tool_call") {
+        const live = getSession(input.db, input.sessionId);
+        if (live?.permissionMode === "bypass") {
+          appendAudit(agentdeckDir(), {
+            ts: new Date().toISOString(),
+            type: "tool_call",
+            sessionId: input.sessionId,
+            runId: input.runId,
+            toolName: event.name,
+            toolId: event.toolId,
+            bypassed: true,
+          });
+        }
+      }
       if (event.kind === "session_started" && session.providerSessionId === null) {
         updateSession(input.db, input.sessionId, { providerSessionId: event.providerSessionId });
       }

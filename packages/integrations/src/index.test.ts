@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkSameOriginHttp, checkWebsocketUpgrade } from "./http-guard.ts";
+import { checkSameOriginHttp, checkUiHttp, checkWebsocketUpgrade } from "./http-guard.ts";
 import { generatePairingCode, isCanonicalPairingCode, PairingDesk, PAIRING_CODE_LENGTH, PAIRING_MAX_ATTEMPTS_PER_CODE, PAIRING_MAX_ATTEMPTS_PER_SOURCE_PER_MINUTE, CROCKFORD } from "./pairing.ts";
 import { deriveRelayKey, isSealedFrame, openSealed, sealJson } from "./relay-seal.ts";
 import { parseRemote, routeTenant } from "./index.ts";
@@ -131,6 +131,43 @@ describe("same-origin HTTP guard", () => {
       },
     });
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("embedded UI HTTP guard", () => {
+  const uiPolicy = {
+    allowedOrigins: ["http://127.0.0.1:7420"],
+    allowedHosts: ["127.0.0.1:7420"],
+  };
+
+  test("allows a document navigation with Sec-Fetch-Site none and no Origin", () => {
+    const result = checkUiHttp({
+      origin: undefined,
+      host: "127.0.0.1:7420",
+      secFetchSite: "none",
+      policy: uiPolicy,
+    });
+    expect(result).toEqual({ ok: true, kind: "browser" });
+  });
+
+  test("rejects curl without Origin or Sec-Fetch-Site", () => {
+    const result = checkUiHttp({
+      origin: undefined,
+      host: "127.0.0.1:7420",
+      secFetchSite: undefined,
+      policy: uiPolicy,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  test("rejects a foreign Origin", () => {
+    const result = checkUiHttp({
+      origin: "https://evil.example",
+      host: "127.0.0.1:7420",
+      secFetchSite: "cross-site",
+      policy: uiPolicy,
+    });
+    expect(result.ok).toBe(false);
   });
 });
 

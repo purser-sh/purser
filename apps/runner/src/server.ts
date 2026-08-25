@@ -50,13 +50,8 @@ import { VoiceSession, toBase64Pcm } from "./voice-session.ts";
 import { describeRunning, lastAssistantText, parseLocalCommand } from "./voice-commands.ts";
 import { FolderWatchService } from "./folder-watch.ts";
 import { coachPrompt } from "@agentdeck/prompt-coach";
-import {
-  checkWebsocketUpgrade,
-  pairingCodesEqual,
-  parseRemote,
-  sealJson,
-  timingSafeEqualString,
-} from "@agentdeck/integrations";
+import { checkWebsocketUpgrade, pairingCodesEqual, parseRemote, sealJson, timingSafeEqualString } from "@agentdeck/integrations";
+import { serveEmbeddedUi, writeConfigRouteGone } from "./ui-serve.ts";
 import {
   consumeBypassRun,
   enableBypass,
@@ -99,6 +94,7 @@ export type AppContext = {
   relay: RelayHandle | null;
   voice: VoiceSession | null;
   folderWatch: FolderWatchService | null;
+  uiDir?: string;
 };
 
 class HandlerError extends Error {
@@ -1003,9 +999,35 @@ export function startServer(ctx: AppContext): Promise<{ port: number; close: () 
   ctx.folderWatch.restore(listFolderWatches(ctx.db));
 
   const httpServer = createServer((req, res) => {
-    if (req.method === "GET" && req.url === "/health") {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (req.method === "GET" && url.pathname === "/health") {
       health(req, res);
       return;
+    }
+    if (url.pathname === "/__agentdeck/config") {
+      writeConfigRouteGone(res);
+      return;
+    }
+    if (req.method === "GET" && ctx.uiDir !== undefined) {
+      const address = httpServer.address();
+      const port = typeof address === "object" && address !== null ? address.port : ctx.config.port;
+      const served = serveEmbeddedUi({
+        req,
+        res,
+        uiDir: ctx.uiDir,
+        bootstrap: {
+          wsUrl: `ws://127.0.0.1:${port}`,
+          token: ctx.config.token,
+          allowedRoots: ctx.config.allowedRoots,
+        },
+        policy: {
+          allowedOrigins: resolvedOrigins(ctx.config, port),
+          allowedHosts: resolvedHosts(ctx.config, port),
+        },
+      });
+      if (served) {
+        return;
+      }
     }
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ ok: false, error: "not found" }));
@@ -1024,7 +1046,7 @@ export function startServer(ctx: AppContext): Promise<{ port: number; close: () 
         tokenQuery: url.searchParams.get("token") ?? undefined,
         runnerToken: ctx.config.token,
         policy: {
-          allowedOrigins: resolvedOrigins(ctx.config),
+          allowedOrigins: resolvedOrigins(ctx.config, port),
           allowedHosts: resolvedHosts(ctx.config, port),
         },
       });

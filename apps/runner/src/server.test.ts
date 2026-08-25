@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { Socket } from "node:net";
 import { join } from "node:path";
@@ -146,6 +146,45 @@ describe("runner websocket", () => {
     expect(text.includes("allowedRoots")).toBe(false);
     expect(text.includes("/home")).toBe(false);
     expect(text.toLowerCase().includes("workspace")).toBe(false);
+    await server.close();
+  });
+
+  test("config route on the runner is always 404 and never CORS", async () => {
+    const { server } = await boot();
+    const response = await fetch(`http://127.0.0.1:${server.port}/__agentdeck/config`, {
+      headers: {
+        Origin: "http://127.0.0.1:7410",
+        Host: `127.0.0.1:${server.port}`,
+        "Sec-Fetch-Site": "same-origin",
+      },
+    });
+    expect(response.status).toBe(404);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    const body = await response.text();
+    expect(body.includes("token")).toBe(false);
+    await server.close();
+  });
+
+  test("embedded UI injects the token into HTML for a browser navigation", async () => {
+    const uiDir = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-ui-"));
+    writeFileSync(join(uiDir, "index.html"), "<html><head></head><body>deck</body></html>\n");
+    const { ctx, server } = await boot();
+    ctx.uiDir = uiDir;
+    const origin = `http://127.0.0.1:${server.port}`;
+    const response = await fetch(`${origin}/`, {
+      headers: {
+        Host: `127.0.0.1:${server.port}`,
+        "Sec-Fetch-Site": "none",
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    const html = await response.text();
+    expect(html.includes("window.__AGENTDECK_BOOTSTRAP__")).toBe(true);
+    expect(html.includes(TOKEN)).toBe(true);
+    const curl = await fetch(`${origin}/`, { headers: { Host: `127.0.0.1:${server.port}` } });
+    expect(curl.status).toBe(403);
     await server.close();
   });
 

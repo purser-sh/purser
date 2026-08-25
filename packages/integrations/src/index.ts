@@ -48,6 +48,7 @@ export {
 
 export {
   checkSameOriginHttp,
+  checkUiHttp,
   checkWebsocketUpgrade,
   CONFIG_ROUTE_HEADERS,
   hostAllowed,

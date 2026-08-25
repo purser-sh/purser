@@ -1,36 +1,23 @@
 import { PROTOCOL_VERSION, parseServerMessage, type ClientMessage, type ServerMessage } from "@agentdeck/protocol";
 import { deriveRelayKey, isSealedFrame, openSealed, sealJson } from "@agentdeck/integrations";
+import { parseBootstrap, readInjectedBootstrap, type Bootstrap } from "@/lib/bootstrap";
 
-export type Bootstrap = {
-  wsUrl: string;
-  token: string;
-  allowedRoots: string[];
-  defaultWorkspace?: { name: string; absPath: string };
-  pair?: { role: "phone" | "runner"; code: string };
-};
+export type { Bootstrap } from "@/lib/bootstrap";
 
 export async function fetchBootstrap(): Promise<Bootstrap> {
+  const injected = readInjectedBootstrap(window);
+  if (injected !== undefined) {
+    return injected;
+  }
   const response = await fetch("/__agentdeck/config");
   if (!response.ok) {
     throw new Error("Runner is not running. Start it with bun run dev.");
   }
-  const body: unknown = await response.json();
-  const record = isRecord(body) ? body : {};
-  const defaultWorkspaceRaw = record.defaultWorkspace;
-  const defaultWorkspace =
-    isRecord(defaultWorkspaceRaw) &&
-    typeof defaultWorkspaceRaw.name === "string" &&
-    typeof defaultWorkspaceRaw.absPath === "string"
-      ? { name: defaultWorkspaceRaw.name, absPath: defaultWorkspaceRaw.absPath }
-      : undefined;
-  return {
-    wsUrl: typeof record.wsUrl === "string" ? record.wsUrl : "ws://127.0.0.1:7420",
-    token: typeof record.token === "string" ? record.token : "",
-    allowedRoots: Array.isArray(record.allowedRoots)
-      ? record.allowedRoots.filter((item): item is string => typeof item === "string")
-      : [],
-    defaultWorkspace,
-  };
+  const parsed = parseBootstrap(await response.json());
+  if (parsed === undefined) {
+    throw new Error("Runner is not running. Start it with bun run dev.");
+  }
+  return parsed;
 }
 
 type Pending = {

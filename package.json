@@ -7,7 +7,9 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "test": "turbo test",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "compile": "bun scripts/compile.ts",
+    "compile:all": "bun scripts/compile.ts --all"
   },
   "devDependencies": {
     "turbo": "^2.5.8",

@@ -103,6 +103,41 @@ export function checkSameOriginHttp(input: {
   return { ok: true, kind: "browser" };
 }
 
+/**
+ * HTML/static UI served by the companion. Document navigations often omit Origin
+ * (address bar / `open` / xdg-open) but send `Sec-Fetch-Site: none`.
+ * curl without those headers is rejected so the injected token is not a public GET.
+ */
+export function checkUiHttp(input: {
+  origin: string | string[] | undefined;
+  host: string | string[] | undefined;
+  secFetchSite: string | string[] | undefined;
+  policy: HttpGuardPolicy;
+}): GuardDecision {
+  const host = headerValue(input.host);
+  if (host === undefined || !hostAllowed(host, input.policy.allowedHosts)) {
+    return { ok: false, status: 403, reason: "host not allowed" };
+  }
+
+  const site = headerValue(input.secFetchSite)?.toLowerCase();
+  if (site === "cross-site") {
+    return { ok: false, status: 403, reason: "cross-site fetch" };
+  }
+
+  const origin = headerValue(input.origin);
+  if (origin !== undefined && origin.length > 0) {
+    if (origin === "null" || !originAllowed(origin, input.policy.allowedOrigins)) {
+      return { ok: false, status: 403, reason: "origin not allowed" };
+    }
+    return { ok: true, kind: "browser" };
+  }
+
+  if (site === "none" || site === "same-origin" || site === "same-site") {
+    return { ok: true, kind: "browser" };
+  }
+  return { ok: false, status: 403, reason: "origin required" };
+}
+
 export const CONFIG_ROUTE_HEADERS = {
   "cache-control": "no-store",
   vary: "Origin",

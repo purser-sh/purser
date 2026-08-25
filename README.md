@@ -52,13 +52,14 @@ That gap is the product.
 - Clickable file tree + file preview
 - Zod protocol, SQLite persistence, secrets in a 0600 file
 - Websocket Origin/Host allowlists; non-browser upgrades require the runner token
-- `/__agentdeck/config` same-origin only in Vite development; production 404
+- `/__agentdeck/config` same-origin only in Vite development; production Vite and the runner return 404. Packaged HTML injects the token.
 - `/health` returns `{ ok: true, protocolVersion: 2 }` only
 - Pairing codes: Crockford ≥ 8 chars, TTL 120s, single use, rate limits
 - Bypass TTL + run cap, non-dismissible banner, bypass tool calls in `audit.jsonl`
 - Token ledger (`token_ledger`, append-only). Grok and Perplexity token rates from official pages (`asOf` 2026-08-25). OpenAI-compatible models stay **unpriced**. Override with `~/.agentdeck/pricing.json`. See [docs/METERING.md](docs/METERING.md).
 - Budget governor: `budgets` table, pre-run / in-flight gates, `spend_update`, warn / ask / hard stop. Protocol version **2**.
-- Hash-chained `~/.agentdeck/audit.jsonl` (0600). Verify with `bun apps/runner/src/index.ts audit verify`. Rotation at 64 MB.
+- Hash-chained `~/.agentdeck/audit.jsonl` (0600). Verify with `bun apps/runner/src/index.ts audit verify` or `agentdeck audit verify` on the compiled binary. Rotation at 64 MB.
+- Packaged companion: `bun run compile` embeds the UI. First run of the binary opens the browser and never prints the token. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ### Specified, not implemented (review the contract, not a fake stack)
 
@@ -68,7 +69,7 @@ That gap is the product.
 | Hosted HTTP control plane | `packages/integrations/src/control-plane.ts` | Types, scale gates, isolation rules, tenant hashing. No public API server. |
 | Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `AGENTDECK_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
 | Anthropic tokenizer package | `packages/pricing/src/tokenizer.ts` | `gpt-tokenizer` is shipped. `@anthropic-ai/tokenizer` is **not** installed; Claude prompts still use the OpenAI encoder. Heuristic `ceil(chars/4)` is last-resort if encode throws. |
-| Packaged desktop binary | Phase 5 | `bun run dev` only. |
+| Packaged desktop binary | `scripts/compile.ts`, `docs/RELEASING.md` | `bun run compile` / `compile:all`. UI embedded; token injected into HTML; `/__agentdeck/config` is 404 on the runner. Unsigned unless CI signing secrets are set. No public release yet. |
 
 **Echo is a fake agent.** If the UI says “You said: …” and proposes `+# echoed` on `README.md`, you are testing the console, not a real model. Switch provider on the right to Claude / Codex / Cursor / Gemini / Grok / Ollama.
 
@@ -254,6 +255,9 @@ packages/integrations    GitHub/GitLab parse, origin/host guard, pairing, scale 
 extensions/vscode        IDE bridge contract (no extension code yet)
 docs/SECURITY.md         companion threat model (Phase 0)
 docs/METERING.md         what each adapter can observe and price
+docs/RELEASING.md        compile, embed UI, codesign/Authenticode secrets, checksums
+Formula/agentdeck.rb     Homebrew template (sha256 zeros until a real release)
+install.sh               download + SHA256SUMS verify (needs AGENTDECK_REPO)
 ```
 
 | Concern | Primary files |

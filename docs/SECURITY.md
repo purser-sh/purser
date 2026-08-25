@@ -23,7 +23,7 @@ Disclosure: there is no published security mailbox yet. Until launch, report iss
 | Websocket `Host` allowlist (`127.0.0.1:<port>`, `localhost:<port>`, plus `allowedHosts`) | DNS rebinding. Default list does **not** include `[::1]`. |
 | Non-browser upgrades require `Authorization: Bearer <runner token>` (or `?token=`) when `Origin` is absent | Local pages cannot skip Origin; CLI/VS Code clients must present the token at handshake. Logged as `token-client`. |
 | `hello` token check (timing-safe). Via-relay hello uses the pairing code, not the runner token. | Defence in depth after a successful upgrade. |
-| `/__agentdeck/config` Host + Origin + `Sec-Fetch-Site !== cross-site`, `Cache-Control: no-store`, `Vary: Origin`, `X-Content-Type-Options: nosniff`, no `Access-Control-Allow-Origin`. Mounted only when Vite `mode === 'development'`. Production returns 404. | Token theft from a web page or a production static server. |
+| Vite `/__agentdeck/config` (development only) Host + Origin + `Sec-Fetch-Site !== cross-site`, `Cache-Control: no-store`, `Vary: Origin`, `X-Content-Type-Options: nosniff`, no `Access-Control-Allow-Origin`. Production Vite and the runner both 404 this path. Packaged HTML injects the token under `checkUiHttp` (Host allowlist; document nav may omit Origin if `Sec-Fetch-Site` is `none`/`same-origin`/`same-site`). | Token theft from a web page or a production static server. |
 | `/health` returns only `{ ok: true, protocolVersion: 2 }` | Accidental leak of token, roots, or workspace names. |
 | Pairing codes: Crockford base32, length ≥ 8 (~40 bits), TTL 120s, single use, max 5 attempts per code, max 20 attempts per source per minute, `timingSafeEqual` via SHA-256 digests. | Relay guessing and reuse. |
 | Relay frame seal: HKDF-SHA-256(pairing code) → AES-256-GCM. | Relay reading protocol payloads (including the runner token on `hello` from the phone path — the phone authenticates with the pairing code, not the runner token). |
@@ -34,7 +34,7 @@ Disclosure: there is no published security mailbox yet. Until launch, report iss
 
 - A process running as the same OS user can read `~/.agentdeck/secrets.json` (mode `0600`) and the SQLite file.
 - Connecting to the runner via IPv6 loopback (`[::1]`) is rejected unless the user adds it to `allowedHosts`.
-- Production token injection into packaged HTML is **Phase 5**. Until then, do not expose `/__agentdeck/config` outside Vite development.
+- Production token injection: the compiled companion injects `window.__AGENTDECK_BOOTSTRAP__` into HTML at request time. `/__agentdeck/config` is 404 on the runner. Vite still mounts the JSON route in development only. See [docs/RELEASING.md](RELEASING.md).
 - Folder watch and host filesystem paths never go to a cloud API (README §4.2). That rule is not a local-attacker control.
 
 ## Secrets posture

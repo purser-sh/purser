@@ -39,8 +39,13 @@ export function logsDir(): string {
   return join(agentdeckDir(), "logs");
 }
 
-export function resolvedOrigins(config: RunnerConfig): string[] {
-  return config.allowedOrigins ?? [...DEFAULT_UI_ORIGINS];
+export function resolvedOrigins(config: RunnerConfig, boundPort?: number): string[] {
+  const base = config.allowedOrigins ?? [...DEFAULT_UI_ORIGINS];
+  if (boundPort === undefined) {
+    return [...base];
+  }
+  const extra = [`http://127.0.0.1:${boundPort}`, `http://localhost:${boundPort}`];
+  return [...new Set([...base, ...extra])];
 }
 
 export function resolvedHosts(config: RunnerConfig, boundPort: number): string[] {

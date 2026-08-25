@@ -15,6 +15,7 @@ import { getSecret } from "./secrets.ts";
 import { buildExtraPrompt } from "./skills.ts";
 import { appendAudit } from "./audit.ts";
 import { agentdeckDir } from "./config.ts";
+import { finalizeRunLedger, recordUsageEvent } from "./meter.ts";
 
 const SKIP_PERSIST = new Set<AgentEvent["kind"]>(["text_delta"]);
 
@@ -69,6 +70,8 @@ export async function executeRun(input: {
   let seq = 0;
   let runStatus: "ok" | "cancelled" | "error" = "ok";
   let runError: string | null = null;
+  let observedText = input.prompt;
+  let liveSession = session;
 
   try {
     for await (const event of adapter.run({
@@ -109,6 +112,9 @@ export async function executeRun(input: {
         });
       }
 
+      if (event.kind === "text" || event.kind === "text_delta") {
+        observedText += `\n${event.text}`;
+      }
       if (event.kind === "tool_call") {
         const live = getSession(input.db, input.sessionId);
         if (live?.permissionMode === "bypass") {
@@ -128,10 +134,11 @@ export async function executeRun(input: {
       }
       if (event.kind === "usage") {
         const latest = getSession(input.db, input.sessionId);
+        liveSession = latest ?? liveSession;
+        recordUsageEvent(input.db, liveSession, input.runId, event);
         updateSession(input.db, input.sessionId, {
-          tokensIn: (latest?.tokensIn ?? 0) + event.tokensIn,
-          tokensOut: (latest?.tokensOut ?? 0) + event.tokensOut,
-          costUsd: (latest?.costUsd ?? 0) + (event.costUsd ?? 0),
+          tokensIn: (latest?.tokensIn ?? 0) + (event.inputTokens ?? 0),
+          tokensOut: (latest?.tokensOut ?? 0) + (event.outputTokens ?? 0),
         });
       }
       if (event.kind === "done") {
@@ -174,6 +181,8 @@ export async function executeRun(input: {
       });
     }
   } finally {
+    const latest = getSession(input.db, input.sessionId) ?? liveSession;
+    finalizeRunLedger(input.db, latest, input.runId, observedText);
     finishRun(input.db, input.runId, runStatus === "ok" ? "ok" : runStatus, runError);
     updateSession(input.db, input.sessionId, { status: runStatus === "error" ? "error" : "idle" });
     const finished = {

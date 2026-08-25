@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { openSqliteDatabase } from "./client.ts";
 import {
+  appendLedgerEntry,
   insertEvent,
   insertRun,
   insertSession,
   insertWorkspace,
+  listLedgerByRun,
   loadState,
   saveFolderWatches,
   seedDefaults,
@@ -79,5 +81,41 @@ describe("sqlite core", () => {
 
   test("rejects postgres urls", () => {
     expect(() => openSqliteDatabase("postgres://localhost/agentdeck")).toThrow(/Postgres/);
+  });
+
+  test("token_ledger is append-only and stores NULL cost for unpriced rows", async () => {
+    const db = openMemory();
+    await seedDefaults(db);
+    const workspace = insertWorkspace(db, {
+      name: "AgentDeck",
+      absPath: "/home/aksingh/AgentDeck",
+      gitRemote: null,
+    });
+    const session = insertSession(db, {
+      workspaceId: workspace.id,
+      title: "s",
+      providerId: "generic_llm",
+      modelId: "mystery-model",
+      permissionMode: "ask",
+    });
+    const run = insertRun(db, session.id);
+    const row = appendLedgerEntry(db, {
+      workspaceId: workspace.id,
+      sessionId: session.id,
+      runId: run.id,
+      providerId: "generic_llm",
+      model: "mystery-model",
+      costModel: "metered",
+      inputTokens: 10,
+      outputTokens: 4,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsdMicros: null,
+      source: "provider_usage",
+    });
+    expect(row.costUsdMicros).toBeNull();
+    expect(listLedgerByRun(db, run.id)).toHaveLength(1);
+    expect(() => db.$client.exec("UPDATE token_ledger SET source = 'x'")).toThrow(/append-only/);
+    expect(() => db.$client.exec("DELETE FROM token_ledger")).toThrow(/append-only/);
   });
 });

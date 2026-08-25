@@ -14,6 +14,7 @@ export const codexAdapter: AgentAdapter = {
   id: "codex",
   label: "OpenAI Codex",
   kind: "cli",
+  costModel: "subscription",
   async checkHealth() {
     const path = which("codex");
     if (path === null) {

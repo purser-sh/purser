@@ -2,6 +2,7 @@
 import type { AgentEvent } from "@agentdeck/protocol";
 import type { AgentAdapter, RunInput } from "./types.ts";
 import { which } from "./cli/which.ts";
+import { usageEventFromProvider } from "./usage.ts";
 
 type SdkQuery = (params: {
   prompt: string;
@@ -66,11 +67,10 @@ function mapClaudeMessage(msg: Record<string, unknown>): AgentEvent[] {
   if (type === "result") {
     const usage = isRecord(msg.usage) ? msg.usage : undefined;
     if (usage) {
-      events.push({
-        kind: "usage",
-        tokensIn: Number(usage.input_tokens ?? 0),
-        tokensOut: Number(usage.output_tokens ?? 0),
-      });
+      const event = usageEventFromProvider(usage);
+      if (event !== null) {
+        events.push(event);
+      }
     }
     const subtype = msg.subtype;
     events.push({
@@ -86,6 +86,7 @@ export const claudeCodeAdapter: AgentAdapter = {
   id: "claude_code",
   label: "Claude Code",
   kind: "sdk",
+  costModel: "subscription",
   async checkHealth() {
     const cli = which("claude");
     try {

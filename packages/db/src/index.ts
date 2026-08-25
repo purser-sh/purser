@@ -29,4 +29,11 @@ export {
   listFolderWatches,
   saveFolderWatches,
   updateWorkspace,
+  appendLedgerEntry,
+  listLedgerByRun,
+  listLedgerBySession,
+  listLedgerByWorkspace,
+  listLedger,
+  type LedgerEntry,
+  type LedgerSource,
 } from "./queries.ts";

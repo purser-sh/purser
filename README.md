@@ -56,6 +56,7 @@ That gap is the product.
 - `/health` returns `{ ok: true, protocolVersion: 1 }` only
 - Pairing codes: Crockford ≥ 8 chars, TTL 120s, single use, rate limits
 - Bypass TTL + run cap, non-dismissible banner, bypass tool calls in `audit.jsonl`
+- Token ledger (`token_ledger`, append-only). Grok and Perplexity token rates from official pages (`asOf` 2026-08-25). OpenAI-compatible models stay **unpriced**. Override with `~/.agentdeck/pricing.json`. See [docs/METERING.md](docs/METERING.md).
 
 ### Specified, not implemented (review the contract, not a fake stack)
 
@@ -64,7 +65,8 @@ That gap is the product.
 | VS Code / Cursor marketplace extensions | `extensions/vscode/README.md` | Protocol notes only. No `.vsix`. |
 | Hosted HTTP control plane | `packages/integrations/src/control-plane.ts` | Types, scale gates, isolation rules, tenant hashing. No public API server. |
 | Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `AGENTDECK_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
-| Exact provider tokenizers | `packages/prompt-coach` | Heuristic (`ceil(chars/4)`). The bill is still the provider’s. |
+| Exact provider tokenizers | `packages/prompt-coach` | Heuristic (`ceil(chars/4)`). The bill is still the provider’s. Ledger estimates use `gpt-tokenizer`. |
+| Budget governor (warn / ask / hard stop) | Phase 2 | Ledger exists. No spend caps, no `spend_update`. |
 | Hash-chained audit verify + rotation | `docs/SECURITY.md`, Phase 3 | Phase 0 writes unchained `~/.agentdeck/audit.jsonl` for bypass events only. |
 | Packaged desktop binary | Phase 5 | `bun run dev` only. |
 
@@ -246,10 +248,12 @@ packages/protocol        zod wire contracts (no any)
 packages/db              sqlite now, postgres schema ready
 packages/adapters        echo / claude / cli / generic LLM / MCP
 packages/voice           VAD + optional OpenAI STT/TTS
-packages/prompt-coach    token estimate + compact rewrite
+packages/prompt-coach    token estimate + compact rewrite (heuristic until Phase 4)
+packages/pricing         official catalog + integer micro-USD + gpt-tokenizer
 packages/integrations    GitHub/GitLab parse, origin/host guard, pairing, scale gates
 extensions/vscode        IDE bridge contract (no extension code yet)
 docs/SECURITY.md         companion threat model (Phase 0)
+docs/METERING.md         what each adapter can observe and price
 ```
 
 | Concern | Primary files |
@@ -261,6 +265,7 @@ docs/SECURITY.md         companion threat model (Phase 0)
 | Git origin | `apps/runner/src/git.ts` (`setOriginRemote`) |
 | Adapters | `apps/runner/src/registry.ts`, `packages/adapters` |
 | Persistence | `packages/db/src/schema.sqlite.ts`, `queries.ts` |
+| Token ledger / pricing | `apps/runner/src/meter.ts`, `packages/pricing`, `docs/METERING.md` |
 | Secrets | `apps/runner/src/secrets.ts` |
 | Audit (Phase 0 JSONL) | `apps/runner/src/audit.ts` |
 | Bypass TTL | `apps/runner/src/bypass.ts` |
@@ -323,7 +328,7 @@ Agent events inside `agent_event`: `session_started`, `text_delta`, `text`, `thi
 
 ## 7. Data and secrets
 
-**SQLite** (`~/.agentdeck/agentdeck.sqlite`, WAL): workspaces, sessions, events, runs, provider configs (no raw keys), voice profiles, settings. Folder watches are stored under settings key `folder_watches` but **stripped out** of the generic `settings` array in `loadState` so the UI reads `folderWatches` only.
+**SQLite** (`~/.agentdeck/agentdeck.sqlite`, WAL): workspaces, sessions, events, runs, provider configs (no raw keys), voice profiles, settings, append-only `token_ledger`. Folder watches are stored under settings key `folder_watches` but **stripped out** of the generic `settings` array in `loadState` so the UI reads `folderWatches` only.
 
 **Postgres schema** exists for cells. It is not live.
 
@@ -333,6 +338,7 @@ Agent events inside `agent_event`: `session_started`, `text_delta`, `text`, `thi
 | --- | --- |
 | `~/.agentdeck/config.json` | Token, port, allowedRoots (`0600`) |
 | `~/.agentdeck/secrets.json` | Provider API keys |
+| `~/.agentdeck/pricing.json` | Optional catalog overrides (see [docs/METERING.md](docs/METERING.md)) |
 | `~/.agentdeck/logs` | Run logs |
 | `{workspace}/.inbox/` | Synced drop files |
 | `{workspace}/.agentdeck/worktrees/…` | Isolated git worktree per session when applicable |
@@ -409,6 +415,7 @@ Read in this order:
 1. **This README** — product thesis, split companion vs cell, honest “not shipped” list.
 2. [docs/SECURITY.md](docs/SECURITY.md) — threat model and Phase 0 controls.
 3. `packages/prompt-coach` — estimate + compact; tests in `src/index.test.ts`.
+3b. [docs/METERING.md](docs/METERING.md) + `packages/pricing` — ledger honesty; unpriced stays `NULL`.
 4. `apps/runner/src/folder-watch.ts` — copy contract, debounce, loop break; tests in `folder-watch.test.ts`.
 5. `packages/integrations` — `parseRemote`, origin guard, pairing, `control-plane.ts`.
 6. `packages/protocol` — client/server frames; `protocol.test.ts` must parse every type.

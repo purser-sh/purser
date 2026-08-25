@@ -1,4 +1,5 @@
 import type { AgentAdapter, AdapterConfig } from "../types.ts";
+import type { CostModel } from "@agentdeck/protocol";
 import { runToolLoop } from "./loop.ts";
 
 async function fetchModels(baseUrl: string, apiKey: string | null): Promise<{ id: string; label: string }[]> {
@@ -25,11 +26,13 @@ export function createGenericLlmAdapter(input: {
   label: string;
   defaultBaseUrl: string;
   allowFiles: boolean;
+  costModel: CostModel;
 }): AgentAdapter {
   return {
     id: input.id,
     label: input.label,
     kind: "api",
+    costModel: input.costModel,
     async checkHealth(config?: AdapterConfig) {
       const baseUrl = config?.baseUrl ?? input.defaultBaseUrl;
       const apiKey = config?.apiKey ?? null;
@@ -80,6 +83,7 @@ export const ollamaAdapter = createGenericLlmAdapter({
   label: "Ollama",
   defaultBaseUrl: "http://127.0.0.1:11434/v1",
   allowFiles: true,
+  costModel: "local",
 });
 
 export const grokAdapter = createGenericLlmAdapter({
@@ -87,6 +91,7 @@ export const grokAdapter = createGenericLlmAdapter({
   label: "Grok (xAI)",
   defaultBaseUrl: "https://api.x.ai/v1",
   allowFiles: true,
+  costModel: "metered",
 });
 
 export const genericLlmAdapter = createGenericLlmAdapter({
@@ -94,6 +99,7 @@ export const genericLlmAdapter = createGenericLlmAdapter({
   label: "OpenAI compatible",
   defaultBaseUrl: "http://127.0.0.1:11434/v1",
   allowFiles: true,
+  costModel: "metered",
 });
 
 export const perplexityAdapter = createGenericLlmAdapter({
@@ -101,4 +107,5 @@ export const perplexityAdapter = createGenericLlmAdapter({
   label: "Perplexity (research)",
   defaultBaseUrl: "https://api.perplexity.ai",
   allowFiles: false,
+  costModel: "metered",
 });

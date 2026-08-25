@@ -65,7 +65,7 @@ const agentEvents: AgentEvent[] = [
     action: "write_file",
     detail: { path: "README.md" },
   },
-  { kind: "usage", tokensIn: 10, tokensOut: 20, costUsd: 0 },
+  { kind: "usage", inputTokens: 10, outputTokens: 20, cacheReadTokens: null, cacheWriteTokens: null, source: "provider_usage" },
   { kind: "error", message: "boom", fatal: false },
   { kind: "done", status: "ok", summary: "Echoed your message" },
 ];
@@ -252,7 +252,7 @@ const serverMessages: ServerMessage[] = [
   {
     id: "s5",
     type: "models",
-    payload: { providerId: "echo", models: [{ id: "echo-v1", label: "Echo v1" }] },
+    payload: { providerId: "echo", costModel: "local", models: [{ id: "echo-v1", label: "Echo v1" }] },
   },
   {
     id: "s6",
@@ -331,6 +331,17 @@ describe("AgentEventSchema", () => {
     for (const event of agentEvents) {
       expect(AgentEventSchema.parse(event)).toEqual(event);
     }
+  });
+
+  test("migrates legacy usage events", () => {
+    expect(AgentEventSchema.parse({ kind: "usage", tokensIn: 1, tokensOut: 2 })).toEqual({
+      kind: "usage",
+      inputTokens: 1,
+      outputTokens: 2,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      source: "provider_usage",
+    });
   });
 
   test("rejects unknown kind", () => {

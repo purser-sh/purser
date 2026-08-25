@@ -1,4 +1,4 @@
-import type { AgentEvent, PermissionMode, ProviderKind } from "@agentdeck/protocol";
+import type { AgentEvent, CostModel, PermissionMode, ProviderKind } from "@agentdeck/protocol";
 
 export interface PermissionDecision {
   requestId: string;
@@ -40,6 +40,7 @@ export interface AgentAdapter {
   readonly id: string;
   readonly label: string;
   readonly kind: ProviderKind;
+  readonly costModel: CostModel;
   checkHealth(config?: AdapterConfig): Promise<HealthResult>;
   listModels(config?: AdapterConfig): Promise<ModelInfo[]>;
   run(input: RunInput): AsyncIterable<AgentEvent>;

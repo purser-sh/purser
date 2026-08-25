@@ -484,7 +484,7 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         throw new HandlerError("provider", `provider ${message.payload.providerId} is not available yet`);
       }
       const models = await adapter.listModels(adapterConfig(ctx, adapter.id));
-      send(client, { id: message.id, type: "models", payload: { providerId: adapter.id, models } });
+      send(client, { id: message.id, type: "models", payload: { providerId: adapter.id, costModel: adapter.costModel, models } });
       return;
     }
     case "check_provider_health": {

@@ -2,6 +2,7 @@ import type { AgentEvent } from "@agentdeck/protocol";
 import type { RunInput } from "../types.ts";
 import { loadMcpTools } from "../mcp.ts";
 import { executeTool, MAX_TURNS, TOOL_DEFINITIONS, toolSummary } from "./tools.ts";
+import { usageEventFromProvider } from "../usage.ts";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -28,6 +29,31 @@ function parseArgs(raw: string): Record<string, unknown> {
   return { raw };
 }
 
+function isLoopRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseToolCalls(value: unknown): ToolCall[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const out: ToolCall[] = [];
+  for (const item of value) {
+    if (!isLoopRecord(item) || typeof item.id !== "string" || item.type !== "function") {
+      continue;
+    }
+    if (!isLoopRecord(item.function) || typeof item.function.name !== "string" || typeof item.function.arguments !== "string") {
+      continue;
+    }
+    out.push({
+      id: item.id,
+      type: "function",
+      function: { name: item.function.name, arguments: item.function.arguments },
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 async function complete(input: {
   baseUrl: string;
   apiKey: string | null;
@@ -35,7 +61,7 @@ async function complete(input: {
   messages: ChatMessage[];
   tools: Array<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }> | undefined;
   signal: AbortSignal;
-}): Promise<{ message: ChatMessage; usage?: { tokensIn: number; tokensOut: number } }> {
+}): Promise<{ message: ChatMessage; usage?: unknown }> {
   const url = `${input.baseUrl.replace(/\/$/, "")}/chat/completions`;
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (input.apiKey) {
@@ -55,20 +81,22 @@ async function complete(input: {
   if (!response.ok) {
     throw new Error(`LLM ${response.status}: ${await response.text()}`);
   }
-  const body = (await response.json()) as {
-    choices?: Array<{ message?: ChatMessage }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
-  };
-  const message = body.choices?.[0]?.message;
+  const body: unknown = await response.json();
+  if (!isLoopRecord(body) || !Array.isArray(body.choices)) {
+    throw new Error("LLM returned no message");
+  }
+  const first = body.choices[0];
+  const message = isLoopRecord(first) && isLoopRecord(first.message) ? first.message : undefined;
   if (message === undefined) {
     throw new Error("LLM returned no message");
   }
   return {
-    message,
-    usage:
-      body.usage !== undefined
-        ? { tokensIn: body.usage.prompt_tokens ?? 0, tokensOut: body.usage.completion_tokens ?? 0 }
-        : undefined,
+    message: {
+      role: "assistant",
+      content: typeof message.content === "string" ? message.content : null,
+      tool_calls: parseToolCalls(message.tool_calls),
+    },
+    usage: isLoopRecord(body.usage) ? body.usage : undefined,
   };
 }
 
@@ -110,8 +138,9 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
       tools,
       signal: input.signal,
     });
-    if (result.usage) {
-      yield { kind: "usage", tokensIn: result.usage.tokensIn, tokensOut: result.usage.tokensOut };
+    const usage = usageEventFromProvider(result.usage);
+    if (usage !== null) {
+      yield usage;
     }
     const assistant = result.message;
     messages.push(assistant);

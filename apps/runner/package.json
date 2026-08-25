@@ -16,6 +16,7 @@
     "@agentdeck/protocol": "workspace:*",
     "@agentdeck/prompt-coach": "workspace:*",
     "@agentdeck/integrations": "workspace:*",
+    "@agentdeck/pricing": "workspace:*",
     "@agentdeck/voice": "workspace:*",
     "ws": "^8.18.3",
     "zod": "^4.0.17"

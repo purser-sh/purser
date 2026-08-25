@@ -1,5 +1,6 @@
 import type { AgentEvent } from "@agentdeck/protocol";
 import type { AgentAdapter, RunInput } from "./types.ts";
+import { countTokens } from "@agentdeck/pricing";
 
 function assertNotAborted(signal: AbortSignal): void {
   if (signal.aborted) {
@@ -12,6 +13,7 @@ export const echoAdapter: AgentAdapter = {
   id: "echo",
   label: "Echo (fake)",
   kind: "api",
+  costModel: "local",
 
   async checkHealth() {
     return { ok: true, detail: "echo is always healthy" };
@@ -49,7 +51,7 @@ export const echoAdapter: AgentAdapter = {
         added: 1,
         removed: 0,
       },
-      { kind: "usage", tokensIn: input.prompt.length, tokensOut: input.prompt.length + 10, costUsd: 0 },
+      { kind: "usage", inputTokens: countTokens(input.prompt, "openai").value, outputTokens: countTokens(`You said: ${input.prompt}`, "openai").value, cacheReadTokens: null, cacheWriteTokens: null, source: "estimated" },
       { kind: "done", status: "ok", summary: "Echoed your message" },
     ];
 

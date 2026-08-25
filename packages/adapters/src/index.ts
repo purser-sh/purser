@@ -13,3 +13,4 @@ export { codexAdapter } from "./cli/codex.ts";
 export { cursorAgentAdapter } from "./cli/cursor-agent.ts";
 export { geminiCliAdapter } from "./cli/gemini.ts";
 export { loadMcpTools } from "./mcp.ts";
+export { usageEventFromProvider } from "./usage.ts";

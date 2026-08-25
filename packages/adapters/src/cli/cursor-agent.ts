@@ -7,6 +7,7 @@ export const cursorAgentAdapter: AgentAdapter = {
   id: "cursor_agent",
   label: "Cursor Agent",
   kind: "cli",
+  costModel: "subscription",
   async checkHealth() {
     const path = which("agent");
     if (path === null) {

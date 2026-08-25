@@ -17,6 +17,7 @@ export const geminiCliAdapter: AgentAdapter = {
   id: "gemini_cli",
   label: "Gemini CLI",
   kind: "cli",
+  costModel: "subscription",
   async checkHealth() {
     const path = which("gemini");
     if (path === null) {

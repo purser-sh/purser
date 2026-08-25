@@ -12,7 +12,7 @@ import {
   WorkspaceSchema,
   FolderWatchSchema,
 } from "./entities.ts";
-import { FileEncodingSchema, RunStatusSchema } from "./enums.ts";
+import { CostModelSchema, FileEncodingSchema, RunStatusSchema } from "./enums.ts";
 import { AbsolutePathSchema, IdSchema } from "./primitives.ts";
 
 export const StatePayloadSchema = z
@@ -76,6 +76,7 @@ export type PermissionRequestPayload = z.infer<typeof PermissionRequestPayloadSc
 export const ModelsPayloadSchema = z
   .object({
     providerId: z.string().min(1),
+    costModel: CostModelSchema,
     models: z.array(ModelInfoSchema),
   })
   .strict();

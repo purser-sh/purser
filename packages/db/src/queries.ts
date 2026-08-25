@@ -1,5 +1,6 @@
 import { asc, eq, max } from "drizzle-orm";
 import type {
+  CostModel,
   EventRole,
   FolderWatch,
   PermissionMode,
@@ -25,6 +26,7 @@ import {
   runs,
   sessions,
   settings,
+  tokenLedger,
   voiceProfiles,
   workspaces,
 } from "./schema.sqlite.ts";
@@ -572,4 +574,105 @@ export function updateWorkspace(
     db.update(workspaces).set({ gitRemote: patch.gitRemote }).where(eq(workspaces.id, workspaceId)).run();
   }
   return getWorkspace(db, workspaceId);
+}
+
+export type LedgerSource = "provider_usage" | "estimated";
+
+export type LedgerEntry = {
+  id: string;
+  ts: Date;
+  workspaceId: string;
+  sessionId: string;
+  runId: string;
+  providerId: string;
+  model: string | null;
+  costModel: CostModel;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsdMicros: number | null;
+  source: LedgerSource;
+  createdAt: Date;
+};
+
+function mapLedger(row: typeof tokenLedger.$inferSelect): LedgerEntry {
+  const source: LedgerSource = row.source === "estimated" ? "estimated" : "provider_usage";
+  const costModel: CostModel =
+    row.costModel === "subscription" || row.costModel === "local" || row.costModel === "metered"
+      ? row.costModel
+      : "local";
+  return {
+    id: row.id,
+    ts: row.ts,
+    workspaceId: row.workspaceId,
+    sessionId: row.sessionId,
+    runId: row.runId,
+    providerId: row.providerId,
+    model: row.model,
+    costModel,
+    inputTokens: row.inputTokens,
+    outputTokens: row.outputTokens,
+    cacheReadTokens: row.cacheReadTokens,
+    cacheWriteTokens: row.cacheWriteTokens,
+    costUsdMicros: row.costUsdMicros,
+    source,
+    createdAt: row.createdAt,
+  };
+}
+
+export function appendLedgerEntry(
+  db: AppDatabase,
+  input: {
+    workspaceId: string;
+    sessionId: string;
+    runId: string;
+    providerId: string;
+    model: string | null;
+    costModel: CostModel;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    costUsdMicros: number | null;
+    source: LedgerSource;
+    ts?: Date;
+  },
+): LedgerEntry {
+  const now = input.ts ?? new Date();
+  const row = {
+    id: newId("led"),
+    ts: now,
+    workspaceId: input.workspaceId,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    providerId: input.providerId,
+    model: input.model,
+    costModel: input.costModel,
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+    cacheReadTokens: input.cacheReadTokens,
+    cacheWriteTokens: input.cacheWriteTokens,
+    costUsdMicros: input.costUsdMicros,
+    source: input.source,
+    createdAt: now,
+  };
+  db.insert(tokenLedger).values(row).run();
+  return mapLedger(row);
+}
+
+export function listLedgerByRun(db: AppDatabase, runId: string): LedgerEntry[] {
+  return db.select().from(tokenLedger).where(eq(tokenLedger.runId, runId)).all().map(mapLedger);
+}
+
+export function listLedgerBySession(db: AppDatabase, sessionId: string): LedgerEntry[] {
+  return db.select().from(tokenLedger).where(eq(tokenLedger.sessionId, sessionId)).all().map(mapLedger);
+}
+
+export function listLedgerByWorkspace(db: AppDatabase, workspaceId: string): LedgerEntry[] {
+  return db.select().from(tokenLedger).where(eq(tokenLedger.workspaceId, workspaceId)).all().map(mapLedger);
+}
+
+export function listLedger(db: AppDatabase): LedgerEntry[] {
+  return db.select().from(tokenLedger).all().map(mapLedger);
 }

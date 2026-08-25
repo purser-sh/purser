@@ -1,4 +1,5 @@
 import type {
+  CostModel,
   ModelInfo,
   PermissionMode,
   PermissionRequestPayload,
@@ -24,6 +25,7 @@ type DeckStore = StatePayload & {
   liveText: Record<string, string>;
   search: string;
   modelsByProvider: Record<string, ModelInfo[]>;
+  costModelByProvider: Record<string, CostModel>;
   healthByProvider: Record<string, ProviderHealthPayload>;
   pendingPermissions: PermissionRequestPayload[];
   relayStatus: RelayStatusPayload | null;
@@ -70,6 +72,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   liveText: {},
   search: "",
   modelsByProvider: {},
+  costModelByProvider: {},
   healthByProvider: {},
   pendingPermissions: [],
   relayStatus: null,
@@ -161,6 +164,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     if (message.type === "models") {
       set({
         modelsByProvider: { ...current.modelsByProvider, [message.payload.providerId]: message.payload.models },
+        costModelByProvider: { ...current.costModelByProvider, [message.payload.providerId]: message.payload.costModel },
       });
       return;
     }
@@ -236,9 +240,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         if (event.kind === "usage") {
           return {
             ...session,
-            tokensIn: session.tokensIn + event.tokensIn,
-            tokensOut: session.tokensOut + event.tokensOut,
-            costUsd: session.costUsd + (event.costUsd ?? 0),
+            tokensIn: session.tokensIn + (event.inputTokens ?? 0),
+            tokensOut: session.tokensOut + (event.outputTokens ?? 0),
           };
         }
         return session;

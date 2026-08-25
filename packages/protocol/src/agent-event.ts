@@ -1,5 +1,29 @@
 import { z } from "zod";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function migrateLegacyUsage(value: unknown): unknown {
+  if (!isRecord(value) || value.kind !== "usage") {
+    return value;
+  }
+  if ("inputTokens" in value) {
+    return value;
+  }
+  if (typeof value.tokensIn === "number" && typeof value.tokensOut === "number") {
+    return {
+      kind: "usage",
+      inputTokens: value.tokensIn,
+      outputTokens: value.tokensOut,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      source: "provider_usage",
+    };
+  }
+  return value;
+}
+
 export const AgentEventSessionStartedSchema = z
   .object({
     kind: z.literal("session_started"),
@@ -70,9 +94,11 @@ export const AgentEventPermissionRequestSchema = z
 export const AgentEventUsageSchema = z
   .object({
     kind: z.literal("usage"),
-    tokensIn: z.number().nonnegative(),
-    tokensOut: z.number().nonnegative(),
-    costUsd: z.number().nonnegative().optional(),
+    inputTokens: z.number().int().nonnegative().nullable(),
+    outputTokens: z.number().int().nonnegative().nullable(),
+    cacheReadTokens: z.number().int().nonnegative().nullable(),
+    cacheWriteTokens: z.number().int().nonnegative().nullable(),
+    source: z.enum(["provider_usage", "estimated"]),
   })
   .strict();
 
@@ -92,19 +118,22 @@ export const AgentEventDoneSchema = z
   })
   .strict();
 
-export const AgentEventSchema = z.discriminatedUnion("kind", [
-  AgentEventSessionStartedSchema,
-  AgentEventTextDeltaSchema,
-  AgentEventTextSchema,
-  AgentEventThinkingSchema,
-  AgentEventToolCallSchema,
-  AgentEventToolResultSchema,
-  AgentEventFileDiffSchema,
-  AgentEventPermissionRequestSchema,
-  AgentEventUsageSchema,
-  AgentEventErrorSchema,
-  AgentEventDoneSchema,
-]);
+export const AgentEventSchema = z.preprocess(
+  migrateLegacyUsage,
+  z.discriminatedUnion("kind", [
+    AgentEventSessionStartedSchema,
+    AgentEventTextDeltaSchema,
+    AgentEventTextSchema,
+    AgentEventThinkingSchema,
+    AgentEventToolCallSchema,
+    AgentEventToolResultSchema,
+    AgentEventFileDiffSchema,
+    AgentEventPermissionRequestSchema,
+    AgentEventUsageSchema,
+    AgentEventErrorSchema,
+    AgentEventDoneSchema,
+  ]),
+);
 
 export type AgentEvent = z.infer<typeof AgentEventSchema>;
 export type AgentEventKind = AgentEvent["kind"];

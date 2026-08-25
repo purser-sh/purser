@@ -1,4 +1,5 @@
 import type { AgentEvent } from "@agentdeck/protocol";
+import { usageEventFromProvider } from "../usage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -66,11 +67,10 @@ export function mapJsonlEvent(raw: unknown): AgentEvent[] {
   if (type === "result" || type.includes("completed") || type === "turn.completed") {
     const usage = isRecord(raw.usage) ? raw.usage : isRecord(raw.stats) ? raw.stats : undefined;
     if (usage) {
-      events.push({
-        kind: "usage",
-        tokensIn: Number(usage.input_tokens ?? usage.prompt_tokens ?? usage.tokensIn ?? 0),
-        tokensOut: Number(usage.output_tokens ?? usage.completion_tokens ?? usage.tokensOut ?? 0),
-      });
+      const event = usageEventFromProvider(usage);
+      if (event !== null) {
+        events.push(event);
+      }
     }
     const summary = asString(raw.result) ?? asString(raw.response) ?? asString(raw.summary) ?? "done";
     events.push({ kind: "done", status: "ok", summary });

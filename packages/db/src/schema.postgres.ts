@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const workspaces = pgTable("workspaces", {
   id: text("id").primaryKey(),
@@ -93,6 +93,33 @@ export const settings = pgTable("settings", {
   value: jsonb("value").notNull(),
 });
 
+export const tokenLedger = pgTable(
+  "token_ledger",
+  {
+    id: text("id").primaryKey(),
+    ts: timestamp("ts", { withTimezone: true, mode: "date" }).notNull(),
+    workspaceId: text("workspace_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    runId: text("run_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    model: text("model"),
+    costModel: text("cost_model").notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+    costUsdMicros: integer("cost_usd_micros"),
+    source: text("source").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    index("token_ledger_run_id_idx").on(table.runId),
+    index("token_ledger_workspace_ts_idx").on(table.workspaceId, table.ts),
+    index("token_ledger_session_ts_idx").on(table.sessionId, table.ts),
+    index("token_ledger_ts_idx").on(table.ts),
+  ],
+);
+
 export const postgresSchema = {
   workspaces,
   sessions,
@@ -101,4 +128,5 @@ export const postgresSchema = {
   providerConfigs,
   voiceProfiles,
   settings,
+  tokenLedger,
 };

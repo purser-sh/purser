@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const CostModelSchema = z.enum(["metered", "subscription", "local"]);
+export type CostModel = z.infer<typeof CostModelSchema>;
+
 export const PermissionModeSchema = z.enum(["ask", "auto_edit", "bypass"]);
 export type PermissionMode = z.infer<typeof PermissionModeSchema>;
 

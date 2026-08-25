@@ -32,6 +32,7 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
   const runs = useDeckStore((state) => state.runs);
   const providerConfigs = useDeckStore((state) => state.providerConfigs);
   const modelsByProvider = useDeckStore((state) => state.modelsByProvider);
+  const costModelByProvider = useDeckStore((state) => state.costModelByProvider);
   const healthByProvider = useDeckStore((state) => state.healthByProvider);
   const folderWatches = useDeckStore((state) => state.folderWatches);
   const lastSyncEvent = useDeckStore((state) => state.lastSyncEvent);
@@ -295,8 +296,10 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
         <p className="text-sm">
           {session.tokensIn} in / {session.tokensOut} out
         </p>
-        <p className="text-xs text-muted-foreground">${session.costUsd.toFixed(4)} billed after the run</p>
-        <p className="mt-1 text-[11px] text-muted-foreground">Coach tokens before send in the composer.</p>
+        <p className="text-xs text-muted-foreground">
+          {costModelByProvider[session.providerId] ?? "unknown"} · observed tokens, not an invoice. Dollars only appear
+          for metered APIs we can price — never a fabricated $0.00.
+        </p>
       </section>
       <section>
         <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Workspace</h3>

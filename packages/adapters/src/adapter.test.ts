@@ -33,6 +33,14 @@ describe("jsonl mapper", () => {
       { kind: "text_delta", text: "Hi" },
     ]);
     const done = mapJsonlEvent({ type: "result", result: "ok", usage: { input_tokens: 1, output_tokens: 2 } });
+    expect(done).toContainEqual({
+      kind: "usage",
+      inputTokens: 1,
+      outputTokens: 2,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      source: "provider_usage",
+    });
     expect(done.some((event) => event.kind === "done")).toBe(true);
   });
 });

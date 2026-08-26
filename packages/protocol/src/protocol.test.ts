@@ -74,7 +74,7 @@ const clientMessages: ClientMessage[] = [
   {
     id: "c1",
     type: "hello",
-    payload: { token: "secret", clientVersion: "0.0.1", protocolVersion: 2 },
+    payload: { token: "secret", clientVersion: "0.0.1", protocolVersion: 3 },
   },
   { id: "c2", type: "get_state", payload: {} },
   {
@@ -238,7 +238,7 @@ const emptyState = {
   settings: [{ key: "theme", value: "dark" }],
   folderWatches: [],
   budgets: [],
-  protocolVersion: 2 as const,
+  protocolVersion: 3 as const,
   spendSummary: {
     generatedAt: NOW,
     today: { tokens: 0, costUsdMicros: null },
@@ -326,12 +326,21 @@ const serverMessages: ServerMessage[] = [
     id: "s14",
     type: "prompt_estimate",
     payload: {
-      tokens: 12,
+      tokens: {
+        value: 12,
+        source: "exact",
+        tokenizer: "gpt-tokenizer",
+        providerFamily: "openai",
+      },
       compactText: "refactor module",
-      compactTokens: 4,
+      compactTokens: {
+        value: 4,
+        source: "exact",
+        tokenizer: "gpt-tokenizer",
+        providerFamily: "openai",
+      },
       savedTokens: 8,
       notes: ["removed filler"],
-      source: "tokenizer",
     },
   },
   {
@@ -428,12 +437,21 @@ const serverMessages: ServerMessage[] = [
     type: "run_estimate",
     payload: {
       sessionId: "ses_1",
-      tokens: 8,
+      tokens: {
+        value: 8,
+        source: "exact",
+        tokenizer: "gpt-tokenizer",
+        providerFamily: "openai",
+      },
       compactText: "refactor module",
-      compactTokens: 4,
+      compactTokens: {
+        value: 4,
+        source: "exact",
+        tokenizer: "gpt-tokenizer",
+        providerFamily: "openai",
+      },
       savedTokens: 4,
       notes: ["removed filler"],
-      source: "tokenizer",
       costUsdMicros: null,
       costModel: "local",
       unpriced: true,

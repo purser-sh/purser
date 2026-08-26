@@ -16,7 +16,12 @@ import {
   SpendSummarySchema,
   TokenCountsSchema,
 } from "./entities.ts";
-import { CostModelSchema, FileEncodingSchema, RunStatusSchema, TokenizerSourceSchema } from "./enums.ts";
+import {
+  CostModelSchema,
+  FileEncodingSchema,
+  RunStatusSchema,
+  TokenCountSchema,
+} from "./enums.ts";
 import { PROTOCOL_VERSION } from "./constants.ts";
 import { AbsolutePathSchema, IdSchema, IsoDateTimeSchema } from "./primitives.ts";
 
@@ -161,12 +166,11 @@ export type RelayStatusPayload = z.infer<typeof RelayStatusPayloadSchema>;
 
 export const PromptEstimatePayloadSchema = z
   .object({
-    tokens: z.number().int().nonnegative(),
+    tokens: TokenCountSchema,
     compactText: z.string(),
-    compactTokens: z.number().int().nonnegative(),
+    compactTokens: TokenCountSchema,
     savedTokens: z.number().int(),
     notes: z.array(z.string()),
-    source: TokenizerSourceSchema,
   })
   .strict();
 export type PromptEstimatePayload = z.infer<typeof PromptEstimatePayloadSchema>;
@@ -242,12 +246,11 @@ export type SpendReportPayload = z.infer<typeof SpendReportPayloadSchema>;
 export const RunEstimatePayloadSchema = z
   .object({
     sessionId: IdSchema,
-    tokens: z.number().int().nonnegative(),
+    tokens: TokenCountSchema,
     compactText: z.string(),
-    compactTokens: z.number().int().nonnegative(),
+    compactTokens: TokenCountSchema,
     savedTokens: z.number().int(),
     notes: z.array(z.string()),
-    source: TokenizerSourceSchema,
     costUsdMicros: z.number().int().nullable(),
     costModel: CostModelSchema,
     unpriced: z.boolean(),

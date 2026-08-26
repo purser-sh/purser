@@ -12,6 +12,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/tokenizer": "^0.0.4",
     "gpt-tokenizer": "^2.9.0"
   },
   "devDependencies": {

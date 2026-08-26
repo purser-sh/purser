@@ -4,11 +4,30 @@ What AgentDeck can observe, price, and persist. Unpriced is stored as SQL `NULL`
 
 Catalog rows live in `packages/pricing` and are copied from official pages with an `asOf` date. Override any row with `~/.agentdeck/pricing.json` (array of catalog rows, or `{ "rows": [...] }`). User rows deep-merge onto the builtin catalog.
 
-## Adapter observability
+## Prompt token counts (composer / coach)
+
+Composer estimates use `TokenCount`: `{ value, source: "exact" | "approximate", tokenizer, providerFamily }`.
+`exact` only when the tokenizer’s family matches the provider’s family. Approximate counts render as `≈ N` with a tooltip naming the tokenizer. This is **not** the agent loop and **not** the ledger.
+
+| Adapter | Provider family | Tokenizer used for coach | Coach count |
+| --- | --- | --- | --- |
+| `echo` | openai | `gpt-tokenizer` | exact |
+| `grok` | openai | `gpt-tokenizer` | exact |
+| `perplexity` | openai | `gpt-tokenizer` | exact |
+| `generic_llm` | openai | `gpt-tokenizer` | exact |
+| `ollama` | openai | `gpt-tokenizer` | exact |
+| `codex` | openai | `gpt-tokenizer` | exact |
+| `claude_code` | anthropic | `@anthropic-ai/tokenizer` | exact (family match; Anthropic’s package itself is rough for Claude 3+ — prefer provider `usage` for bills) |
+| `gemini_cli` | google | `gpt-tokenizer` (no Google tokenizer in-tree) | **approximate** |
+| `cursor_agent` | unknown | `gpt-tokenizer` | **approximate** |
+
+If encode throws, source is `approximate` with tokenizer `heuristic` (`ceil(chars/4)`).
+
+## Adapter observability (ledger / spend)
 
 | Adapter | `costModel` | Usage we can see | What we price |
 | --- | --- | --- | --- |
-| `echo` | `local` | Estimated with `gpt-tokenizer` on the prompt and echo text | Never. Local fake agent. |
+| `echo` | `local` | Estimated with the family tokenizer on the prompt and echo text | Never. Local fake agent. |
 | `grok` | `metered` | OpenAI-style `usage` when the API returns it (`prompt_tokens`, `completion_tokens`, `cached_tokens`). Otherwise estimated at run finish from the observed transcript. | Token rates from [xAI pricing](https://docs.x.ai/developers/pricing) for `grok-4.6`, `grok-4.5`, `grok-4.3`. Cache **write** is unpublished → the whole event is unpriced if cache-write tokens are present. Requests ≥200k input use the published long-context rates for the **whole** request. |
 | `perplexity` | `metered` | Same OpenAI-style `usage` if present; else estimate at finish. | Token rates only for `sonar`, `sonar-pro`, `sonar-reasoning-pro` from [Perplexity pricing](https://docs.perplexity.ai/getting-started/pricing). Per-request and search fees are **not** in the ledger. |
 | `generic_llm` | `metered` | Same as grok when the endpoint returns `usage`. | **No builtin rows.** The official OpenAI pricing page could not be fetched when the catalog was written (`asOf` 2026-08-25). Add rows in `pricing.json` if you want dollars. |
@@ -28,7 +47,8 @@ Session `tokensIn` / `tokensOut` are observed counters for the UI. They are not 
 
 ## Honest gaps
 
-- Prompt-coach counts the **composer prompt** with `gpt-tokenizer` (`source: tokenizer`, or `heuristic` if encode throws). That is not the agent loop and not this ledger.
 - OpenAI / unnamed compatible models are unpriced until an official catalog row exists.
 - Perplexity request fees are outside the token ledger.
+- Gemini coach counts are approximate until a Google tokenizer ships locally.
+- Cursor agent coach counts are approximate (unknown tokenizer family).
 - We do not hash-chain the ledger. Audit chaining applies to `audit.jsonl`, not this table.

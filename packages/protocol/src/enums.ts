@@ -49,5 +49,18 @@ export type BudgetAction = z.infer<typeof BudgetActionSchema>;
 export const BudgetDecisionSchema = z.enum(["allow_once", "allow_with_headroom", "deny"]);
 export type BudgetDecision = z.infer<typeof BudgetDecisionSchema>;
 
-export const TokenizerSourceSchema = z.enum(["tokenizer", "heuristic"]);
+export const TokenizerFamilySchema = z.enum(["openai", "anthropic", "google", "unknown"]);
+export type TokenizerFamily = z.infer<typeof TokenizerFamilySchema>;
+
+export const TokenizerSourceSchema = z.enum(["exact", "approximate"]);
 export type TokenizerSource = z.infer<typeof TokenizerSourceSchema>;
+
+export const TokenCountSchema = z
+  .object({
+    value: z.number().int().nonnegative(),
+    source: TokenizerSourceSchema,
+    tokenizer: z.string().min(1),
+    providerFamily: TokenizerFamilySchema,
+  })
+  .strict();
+export type TokenCount = z.infer<typeof TokenCountSchema>;

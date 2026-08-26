@@ -10,7 +10,9 @@ import { useRunner } from "@/lib/client";
 import { selectedSession, sessionEvents, useDeckStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { coachPrompt } from "@agentdeck/prompt-coach";
+import { familyForProvider } from "@agentdeck/pricing";
 import { formatUsdMicros } from "@/lib/money";
+import { TokenCountLabel } from "@/components/TokenCountLabel";
 
 function asAgent(event: StoredEvent): AgentEvent | null {
   if (event.payload.kind === "user_message") {
@@ -188,7 +190,11 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
   const session = selectedSession(sessions, selectedSessionId);
   const [draft, setDraft] = useState("");
   const visible = useMemo(() => sessionEvents(events, selectedSessionId), [events, selectedSessionId]);
-  const estimate = useMemo(() => (draft.trim().length === 0 ? null : coachPrompt(draft)), [draft]);
+  const tokenizerFamily = familyForProvider(session?.providerId ?? "echo");
+  const estimate = useMemo(
+    () => (draft.trim().length === 0 ? null : coachPrompt(draft, tokenizerFamily)),
+    [draft, tokenizerFamily],
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const providerLabel = configs.find((config) => config.providerId === session?.providerId)?.label ?? session?.providerId;
 
@@ -374,15 +380,15 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
             ) : (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <p>
-                  <span className="font-medium text-foreground">{estimate.tokens}</span> prompt tokens
+                  <TokenCountLabel className="font-medium text-foreground" count={estimate.tokens} /> prompt tokens
                   <span className="text-muted-foreground">
                     {" "}
-                    ({estimate.source === "tokenizer" ? "gpt-tokenizer" : "heuristic"} · this prompt only, not the loop)
+                    ({estimate.tokens.tokenizer} · this prompt only, not the loop)
                   </span>
                   {estimate.savedTokens > 0 ? (
                     <>
                       {" "}
-                      → <span className="text-emerald-400">{estimate.compactTokens}</span> if shortened
+                      → <TokenCountLabel className="text-emerald-400" count={estimate.compactTokens} /> if shortened
                     </>
                   ) : null}
                 </p>

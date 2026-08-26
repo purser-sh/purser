@@ -8,4 +8,17 @@ export {
   type PriceResult,
   type UsageCounts,
 } from "./price.ts";
-export { countTokens, familyForProvider, type TokenizerFamily, type TokenizerSource } from "./tokenizer.ts";
+export {
+  countTokens,
+  familyForProvider,
+  formatTokenCount,
+  makeTokenCount,
+  tokenCountTooltip,
+  worseTokenSource,
+  TOKENIZER_ANTHROPIC,
+  TOKENIZER_GPT,
+  TOKENIZER_HEURISTIC,
+  type TokenCount,
+  type TokenCountSource,
+  type TokenizerFamily,
+} from "./tokenizer.ts";

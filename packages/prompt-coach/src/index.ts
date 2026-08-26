@@ -1,12 +1,16 @@
-import { countTokens, type TokenizerFamily, type TokenizerSource } from "@agentdeck/pricing";
+import {
+  countTokens,
+  worseTokenSource,
+  type TokenCount,
+  type TokenizerFamily,
+} from "@agentdeck/pricing";
 
 export type PromptEstimate = {
-  tokens: number;
+  tokens: TokenCount;
   compactText: string;
-  compactTokens: number;
+  compactTokens: TokenCount;
   savedTokens: number;
   notes: string[];
-  source: TokenizerSource;
 };
 
 /** Longest first so "could you please" wins over "please". */
@@ -36,10 +40,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function estimateTokens(
-  text: string,
-  family: TokenizerFamily = "openai",
-): { value: number; source: TokenizerSource } {
+export function estimateTokens(text: string, family: TokenizerFamily = "openai"): TokenCount {
   return countTokens(text, family);
 }
 
@@ -72,37 +73,36 @@ export function compactPrompt(text: string): string {
   return compact.length > 0 ? compact : text.trim();
 }
 
-function worseSource(a: TokenizerSource, b: TokenizerSource): TokenizerSource {
-  return a === "heuristic" || b === "heuristic" ? "heuristic" : "tokenizer";
-}
-
 export function coachPrompt(text: string, family: TokenizerFamily = "openai"): PromptEstimate {
-  const original = estimateTokens(text, family);
+  const tokens = estimateTokens(text, family);
   const compactText = compactPrompt(text);
-  const compact = estimateTokens(compactText, family);
-  const source = worseSource(original.source, compact.source);
-  const tokens = original.value;
-  const compactTokens = compact.value;
+  const compactTokens = estimateTokens(compactText, family);
+  const source = worseTokenSource(tokens.source, compactTokens.source);
   const notes: string[] = [
     "This counts the prompt only. Most spend is the agent loop after Send — watch the run spend meter.",
-    source === "tokenizer"
-      ? "Counted with gpt-tokenizer. Anthropic's tokenizer is not installed; Claude prompts still use this encoder. The provider bill can differ."
-      : "Fell back to a character heuristic because the tokenizer failed. The provider bill can differ.",
   ];
-  if (compactTokens < tokens) {
-    notes.unshift(`Same intent in about ${compactTokens} tokens instead of ${tokens}.`);
+  if (source === "exact") {
+    notes.push(`Counted with ${tokens.tokenizer} (exact for ${family}).`);
+  } else if (tokens.tokenizer === "heuristic") {
+    notes.push(`Fell back to a character heuristic because the tokenizer failed. Provider family is ${family}.`);
+  } else {
+    notes.push(
+      `Approximate: counted with ${tokens.tokenizer}; it does not match provider family ${family}. The provider bill can differ.`,
+    );
+  }
+  if (compactTokens.value < tokens.value) {
+    notes.unshift(`Same intent in about ${compactTokens.value} tokens instead of ${tokens.value}.`);
   } else {
     notes.unshift("This prompt is already compact.");
   }
-  if (tokens > 2000) {
+  if (tokens.value > 2000) {
     notes.push("This is a large prompt. Attach files with tools instead of pasting whole modules.");
   }
   return {
     tokens,
     compactText,
     compactTokens,
-    savedTokens: Math.max(0, tokens - compactTokens),
+    savedTokens: Math.max(0, tokens.value - compactTokens.value),
     notes,
-    source,
   };
 }

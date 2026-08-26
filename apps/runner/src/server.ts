@@ -50,6 +50,7 @@ import { VoiceSession, toBase64Pcm } from "./voice-session.ts";
 import { describeRunning, lastAssistantText, parseLocalCommand } from "./voice-commands.ts";
 import { FolderWatchService } from "./folder-watch.ts";
 import { coachPrompt } from "@agentdeck/prompt-coach";
+import { familyForProvider } from "@agentdeck/pricing";
 import { checkWebsocketUpgrade, pairingCodesEqual, parseRemote, sealJson, timingSafeEqualString } from "@agentdeck/integrations";
 import { serveEmbeddedUi, writeConfigRouteGone } from "./ui-serve.ts";
 import {
@@ -798,7 +799,10 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       return;
     }
     case "estimate_prompt": {
-      send(client, { id: message.id, type: "prompt_estimate", payload: coachPrompt(message.payload.text) });
+      const session =
+        message.payload.sessionId !== undefined ? getSession(ctx.db, message.payload.sessionId) : undefined;
+      const family = familyForProvider(session?.providerId ?? "echo");
+      send(client, { id: message.id, type: "prompt_estimate", payload: coachPrompt(message.payload.text, family) });
       return;
     }
     case "estimate_run": {
@@ -806,7 +810,8 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       if (session === undefined) {
         throw new HandlerError("not_found", "session not found");
       }
-      const coach = coachPrompt(message.payload.text);
+      const family = familyForProvider(session.providerId);
+      const coach = coachPrompt(message.payload.text, family);
       const spend = estimateRunSpend(ctx.db, session, message.payload.text);
       send(client, {
         id: message.id,
@@ -818,7 +823,6 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
           compactTokens: coach.compactTokens,
           savedTokens: coach.savedTokens,
           notes: coach.notes,
-          source: coach.source,
           costUsdMicros: spend.costUsdMicros,
           costModel: spend.costModel,
           unpriced: spend.unpriced,

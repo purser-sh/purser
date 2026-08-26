@@ -24,7 +24,7 @@ bun run dev
 | Runner websocket | `ws://127.0.0.1:7420` (loopback) |
 | Health | http://127.0.0.1:7420/health → `{ ok, protocolVersion }` only |
 
-First start writes `~/.agentdeck/config.json` (mode `0600`). The token is **never printed**. API keys go in Settings → `~/.agentdeck/secrets.json`, never SQLite.
+First start writes `~/.agentdeck/config.json` (mode `0600`). The token is **never printed**. API keys go in Settings → `~/.agentdeck/secrets.json`, never SQLite. Open the **web console** (7410), not the runner port alone — Vite injects the bootstrap token into HTML on document navigation (same idea as the packaged binary).
 
 ```bash
 bun test
@@ -39,25 +39,38 @@ bun run compile
 
 Details: [docs/RELEASING.md](docs/RELEASING.md). There is no public GitHub Release yet.
 
-## Shipped
+## Done (Phases 0–6)
 
-- Companion: web UI + runner + optional pairing relay (frames sealed after pair)
+Companion foundation and the spend wedge are in tree:
+
+| Phase | What landed |
+| --- | --- |
+| **0** | Loopback Host/Origin guards, no CORS on config, pairing frames sealed after pair, secrets out of SQLite |
+| **1** | Append-only token ledger; official catalog only; unpriced models stay `NULL` cost (never invent dollars) |
+| **2** | Budget governor (token + USD caps); protocol **v2** (later bumped for TokenCount); spend UI |
+| **3** | Hash-chained `~/.agentdeck/audit.jsonl` (mode `0600`); `audit verify` CLI; path redaction |
+| **4** | Prompt coach returns `TokenCount` (`exact` \| `approximate`). Exact: openai-family adapters + `claude_code` (`@anthropic-ai/tokenizer`). Approximate: `gemini_cli`, `cursor_agent` (and any gpt-tokenizer mismatch). Counts **this prompt**, not the agent loop |
+| **5** | `bun run compile` / `compile:all`; UI embedded in the binary; CI release workflow; token never printed |
+| **6** | Public README vs architecture docs; competitor matrix; platform-risk notes |
+
+Also shipped around that:
+
+- Companion: web UI + runner + optional pairing relay
 - Workspaces, sessions, diffs, permission modes (`ask` / `auto_edit` / `bypass` with TTL)
 - Adapters: Echo, Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity
 - Session git worktrees, drop-folder → `.inbox/`, GitHub and GitLab origin link
 - Voice (PCM + optional STT/TTS) and `/phone`
-- Token ledger (official catalog only; OpenAI unpriced as of 2026-08-25), budget governor, protocol **v2**
-- Hash-chained `~/.agentdeck/audit.jsonl`; `bun apps/runner/src/index.ts audit verify`
-- Prompt coach uses `gpt-tokenizer` (not `ceil(chars/4)`); counts **this prompt**, not the agent loop
-- Compile path + CI workflow; runner `/__agentdeck/config` is 404 (Vite dev still has the JSON route)
+- Dev: Vite serves bootstrap via HTML inject; runner `/__agentdeck/config` stays **404** (JSON config route is Vite-dev only)
 
 ## Not shipped
 
 - VS Code / Cursor marketplace extensions (protocol notes only)
 - Live Postgres / hosted cells (schema and types only; postgres URL throws)
-- `@anthropic-ai/tokenizer`
+- A Google / Gemini local tokenizer (coach counts for `gemini_cli` stay approximate)
 - A tagged public release, Homebrew tap with real sha256, or signing secrets
 - A chosen license or AgentDeck price
+- Commit provenance trailers / `agentdeck provenance` (Phase C)
+- Discriminated `Spend` union without `usdMicros` on subscription runs (Phase B2)
 
 ## Docs
 

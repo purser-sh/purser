@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { BUILTIN_CATALOG } from "./catalog.ts";
 import { tokensToUsdMicros, usdToMicros } from "./money.ts";
 import { mergeCatalog, priceFor } from "./price.ts";
-import { countTokens } from "./tokenizer.ts";
+import { countTokens, formatTokenCount, makeTokenCount, TOKENIZER_GPT } from "./tokenizer.ts";
 
 describe("money", () => {
   test("parses decimal USD into micro-USD without floats", () => {
@@ -84,9 +84,44 @@ describe("priceFor", () => {
 });
 
 describe("tokenizer", () => {
-  test("returns a tokenizer source for a short prompt", () => {
+  test("openai family through gpt-tokenizer is exact", () => {
     const result = countTokens("hello deck", "openai");
-    expect(result.source).toBe("tokenizer");
+    expect(result.source).toBe("exact");
+    expect(result.tokenizer).toBe("gpt-tokenizer");
+    expect(result.providerFamily).toBe("openai");
     expect(result.value).toBeGreaterThan(0);
+  });
+
+  test("anthropic prompt through gpt-tokenizer is approximate", () => {
+    const mismatched = makeTokenCount(10, TOKENIZER_GPT, "anthropic", "openai");
+    expect(mismatched.source).toBe("approximate");
+    expect(mismatched.tokenizer).toBe("gpt-tokenizer");
+    expect(formatTokenCount(mismatched).startsWith("≈")).toBe(true);
+  });
+
+  test("anthropic family through @anthropic-ai/tokenizer is exact", () => {
+    const result = countTokens("hello deck", "anthropic");
+    expect(result.source).toBe("exact");
+    expect(result.tokenizer).toBe("@anthropic-ai/tokenizer");
+    expect(result.providerFamily).toBe("anthropic");
+    expect(result.value).toBeGreaterThan(0);
+  });
+
+  test("google family through gpt-tokenizer is approximate", () => {
+    const google = countTokens("hello deck", "google");
+    expect(google.source).toBe("approximate");
+    expect(google.tokenizer).toBe("gpt-tokenizer");
+  });
+
+  test("formatTokenCount rejects a bare number at compile time", () => {
+    type FormatArg = Parameters<typeof formatTokenCount>[0];
+    type BareNumberRejected = number extends FormatArg ? false : true;
+    const bareNumberRejected: BareNumberRejected = true;
+    expect(bareNumberRejected).toBe(true);
+    // @ts-expect-error bare numbers must not reach the render layer
+    const _illegal: FormatArg = 1240;
+    void _illegal;
+    expect(formatTokenCount(countTokens("hello", "openai")).includes("≈")).toBe(false);
+    expect(formatTokenCount(countTokens("hello", "google")).startsWith("≈")).toBe(true);
   });
 });

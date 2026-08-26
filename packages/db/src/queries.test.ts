@@ -142,6 +142,6 @@ describe("sqlite core", () => {
     const state = loadState(db);
     expect(state.budgets).toHaveLength(1);
     expect(state.settings.some((setting) => setting.key === "budgets")).toBe(false);
-    expect(state.protocolVersion).toBe(2);
+    expect(state.protocolVersion).toBe(3);
   });
 });

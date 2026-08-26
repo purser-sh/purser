@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { encode as encodeCl100k } from "gpt-tokenizer";
 import { BUILTIN_CATALOG } from "./catalog.ts";
 import { tokensToUsdMicros, usdToMicros } from "./money.ts";
 import { mergeCatalog, priceFor } from "./price.ts";
@@ -60,7 +61,7 @@ describe("priceFor", () => {
         cacheReadPerMTokUsd: "0.50",
         cacheWritePerMTokUsd: null,
         asOf: "2026-08-25",
-        sourceUrl: "file://~/.agentdeck/pricing.json",
+        sourceUrl: "file://~/.purser/pricing.json",
       },
     ]);
     const priced = priceFor(
@@ -84,33 +85,39 @@ describe("priceFor", () => {
 });
 
 describe("tokenizer", () => {
-  test("openai family through gpt-tokenizer is exact", () => {
-    const result = countTokens("hello deck", "openai");
-    expect(result.source).toBe("exact");
-    expect(result.tokenizer).toBe("gpt-tokenizer");
-    expect(result.providerFamily).toBe("openai");
-    expect(result.value).toBeGreaterThan(0);
+  test("OpenAI model ids use o200k_base, not the package default cl100k_base", () => {
+    const text = "Please refactor the authentication module with tests.";
+    const o3 = countTokens(text, "o3");
+    expect(o3.source).toBe("exact");
+    expect(o3.tokenizer).toBe("gpt-tokenizer/o200k_base");
+    expect(o3.value).not.toBe(encodeCl100k(text).length);
   });
 
-  test("anthropic prompt through gpt-tokenizer is approximate", () => {
-    const mismatched = makeTokenCount(10, TOKENIZER_GPT, "anthropic", "openai");
-    expect(mismatched.source).toBe("approximate");
-    expect(mismatched.tokenizer).toBe("gpt-tokenizer");
-    expect(formatTokenCount(mismatched).startsWith("≈")).toBe(true);
+  test("grok model ids stay approximate even though the API is OpenAI-shaped", () => {
+    const grok = countTokens("hello deck", "grok-4.6");
+    expect(grok.source).toBe("approximate");
+    expect(grok.providerFamily).toBe("unknown");
+    expect(formatTokenCount(grok).startsWith("≈")).toBe(true);
   });
 
-  test("anthropic family through @anthropic-ai/tokenizer is exact", () => {
-    const result = countTokens("hello deck", "anthropic");
+  test("Anthropic model ids are exact with @anthropic-ai/tokenizer", () => {
+    const result = countTokens("hello deck", "sonnet");
     expect(result.source).toBe("exact");
     expect(result.tokenizer).toBe("@anthropic-ai/tokenizer");
     expect(result.providerFamily).toBe("anthropic");
     expect(result.value).toBeGreaterThan(0);
   });
 
-  test("google family through gpt-tokenizer is approximate", () => {
-    const google = countTokens("hello deck", "google");
+  test("Gemini model ids are approximate without a Google tokenizer", () => {
+    const google = countTokens("hello deck", "gemini-2.5-pro");
     expect(google.source).toBe("approximate");
-    expect(google.tokenizer).toBe("gpt-tokenizer");
+    expect(google.providerFamily).toBe("google");
+  });
+
+  test("gpt-tokenizer on Anthropic text via family mismatch is approximate", () => {
+    const mismatched = makeTokenCount(10, `${TOKENIZER_GPT}/cl100k_base`, "anthropic", false);
+    expect(mismatched.source).toBe("approximate");
+    expect(formatTokenCount(mismatched).startsWith("≈")).toBe(true);
   });
 
   test("formatTokenCount rejects a bare number at compile time", () => {
@@ -121,7 +128,7 @@ describe("tokenizer", () => {
     // @ts-expect-error bare numbers must not reach the render layer
     const _illegal: FormatArg = 1240;
     void _illegal;
-    expect(formatTokenCount(countTokens("hello", "openai")).includes("≈")).toBe(false);
-    expect(formatTokenCount(countTokens("hello", "google")).startsWith("≈")).toBe(true);
+    expect(formatTokenCount(countTokens("hello", "gpt-4")).includes("≈")).toBe(false);
+    expect(formatTokenCount(countTokens("hello", "grok-4.6")).startsWith("≈")).toBe(true);
   });
 });

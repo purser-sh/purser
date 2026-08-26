@@ -1,10 +1,14 @@
 {
-  "name": "@agentdeck/integrations",
+  "name": "@purser-sh/integrations",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./http-guard": "./src/http-guard.ts",
+    "./html-inject": "./src/html-inject.ts",
+    "./pairing-code": "./src/pairing-code.ts",
+    "./relay-seal": "./src/relay-seal.ts"
   },
   "scripts": {
     "test": "bun test",

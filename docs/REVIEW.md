@@ -1,10 +1,10 @@
-# AgentDeck — product and architecture (review)
+# Purser — product and architecture (review)
 
 This is the internal review surface. The public homepage is [README.md](../README.md). Read this, then spot-check the packages listed at the end.
 
-AgentDeck is a **voice-first coding operations platform**. You talk to it, type to it, or drop files into a watched folder on your laptop. It runs **your** coding agents (Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity, plus a fake Echo adapter) against a real project on disk. GitHub **and** GitLab are remotes. VS Code and Cursor are optional thin clients — they are not the product.
+Purser is a **voice-first coding operations platform**. You talk to it, type to it, or drop files into a watched folder on your laptop. It runs **your** coding agents (Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity, plus a fake Echo adapter) against a real project on disk. GitHub **and** GitLab are remotes. VS Code and Cursor are optional thin clients — they are not the product.
 
-**Cursor and VS Code are editors with one (or more) assistants.** AgentDeck is an **operator console** around agents you already pay for: granted folders, voice, a token ledger, budget caps before spend, drop-folder auto-sync, forge links, permission cards, a hash-chained audit log, and (later) multi-tenant cloud cells.
+**Cursor and VS Code are editors with one (or more) assistants.** Purser is an **operator console** around agents you already pay for: granted folders, voice, a token ledger, budget caps before spend, drop-folder auto-sync, forge links, permission cards, a hash-chained audit log, and (later) multi-tenant cloud cells.
 
 The wedge is **spend governance + auditability**. Multi-CLI orchestration, git worktrees, voice, and phone control are already common in 2026. See [COMPETITORS.md](COMPETITORS.md).
 
@@ -27,7 +27,7 @@ The wedge is **spend governance + auditability**. Multi-CLI orchestration, git w
 
 As of 2026-08-25, a dozen tools already orchestrate several CLI agents, isolate git worktrees, and (in some cases) offer voice or a phone client. Claiming those as unique is false. The matrix is in [COMPETITORS.md](COMPETITORS.md).
 
-AgentDeck’s claimed gap is **append-only token ledger + budget governor + hash-chained companion audit**, with dollars only from official catalog rows. If a competitor ships that stack, this paragraph is wrong and must be updated.
+Purser’s claimed gap is **append-only token ledger + budget governor + hash-chained companion audit**, with dollars only from official catalog rows. If a competitor ships that stack, this paragraph is wrong and must be updated.
 
 ---
 
@@ -48,13 +48,13 @@ AgentDeck’s claimed gap is **append-only token ledger + budget governor + hash
 - Clickable file tree + file preview
 - Zod protocol, SQLite persistence, secrets in a 0600 file
 - Websocket Origin/Host allowlists; non-browser upgrades require the runner token
-- `/__agentdeck/config` same-origin only in Vite development; production Vite and the runner return 404. Packaged HTML injects the token.
+- `/__purser/config` same-origin only in Vite development; production Vite and the runner return 404. Packaged HTML injects the token.
 - `/health` returns `{ ok: true, protocolVersion: 2 }` only
 - Pairing codes: Crockford ≥ 8 chars, TTL 120s, single use, rate limits
 - Bypass TTL + run cap, non-dismissible banner, bypass tool calls in `audit.jsonl`
-- Token ledger (`token_ledger`, append-only). Grok and Perplexity token rates from official pages (`asOf` 2026-08-25). OpenAI-compatible models stay **unpriced**. Override with `~/.agentdeck/pricing.json`. See [METERING.md](METERING.md).
+- Token ledger (`token_ledger`, append-only). Grok and Perplexity token rates from official pages (`asOf` 2026-08-25). OpenAI-compatible models stay **unpriced**. Override with `~/.purser/pricing.json`. See [METERING.md](METERING.md).
 - Budget governor: `budgets` table, pre-run / in-flight gates, `spend_update`, warn / ask / hard stop. Protocol version **2**.
-- Hash-chained `~/.agentdeck/audit.jsonl` (0600). Verify with `bun apps/runner/src/index.ts audit verify` or `agentdeck audit verify` on the compiled binary. Rotation at 64 MB.
+- Hash-chained `~/.purser/audit.jsonl` (0600). Verify with `bun apps/runner/src/index.ts audit verify` or `purser audit verify` on the compiled binary. Rotation at 64 MB.
 - Packaged companion: `bun run compile` embeds the UI. First run of the binary opens the browser and never prints the token. See [RELEASING.md](RELEASING.md).
 
 ### Specified, not implemented (review the contract, not a fake stack)
@@ -63,10 +63,10 @@ AgentDeck’s claimed gap is **append-only token ledger + budget governor + hash
 | --- | --- | --- |
 | VS Code / Cursor marketplace extensions | `extensions/vscode/README.md` | Protocol notes only. No `.vsix`. |
 | Hosted HTTP control plane | `packages/integrations/src/control-plane.ts` | Types, scale gates, isolation rules, tenant hashing. No public API server. |
-| Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `AGENTDECK_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
+| Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `PURSER_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
 | Anthropic tokenizer package | `packages/pricing/src/tokenizer.ts` | `gpt-tokenizer` is shipped. `@anthropic-ai/tokenizer` is **not** installed; Claude prompts still use the OpenAI encoder. Heuristic `ceil(chars/4)` is last-resort if encode throws. |
 | Public GitHub Release / Homebrew tap / signed binaries | `docs/RELEASING.md` | Compile script and CI workflow exist. No tagged public release. Formula sha256 values are zeros. Signing secrets are not in this repo. |
-| License and AgentDeck pricing | `LICENSE`, `PRICING.md` | **Human decision.** Files exist as placeholders. |
+| License and Purser pricing | `LICENSE`, `PRICING.md` | **Human decision.** Files exist as placeholders. |
 
 **Echo is a fake agent.** If the UI says “You said: …” and proposes `+# echoed` on `README.md`, you are testing the console, not a real model. Switch provider on the right to Claude / Codex / Cursor / Gemini / Grok / Ollama.
 
@@ -89,9 +89,9 @@ bun run dev
 | Phone UI | same Vite | [http://127.0.0.1:7410/phone](http://127.0.0.1:7410/phone) |
 | Runner health | HTTP on 7420 | `http://127.0.0.1:7420/health` |
 
-On first start the runner writes `~/.agentdeck/config.json` (mode `0600`) with a random token, port `7420`, and `allowedRoots: [$HOME]`. The Vite dev server reads that file at `/__agentdeck/config` so the browser can connect. The token is **never** printed to the terminal.
+On first start the runner writes `~/.purser/config.json` (mode `0600`) with a random token, port `7420`, and `allowedRoots: [$HOME]`. The Vite dev server reads that file at `/__purser/config` so the browser can connect. The token is **never** printed to the terminal.
 
-API keys (Grok, OpenAI, Perplexity, …) go in Settings and land in `~/.agentdeck/secrets.json`. They never go in SQLite.
+API keys (Grok, OpenAI, Perplexity, …) go in Settings and land in `~/.purser/secrets.json`. They never go in SQLite.
 
 ```bash
 bun test
@@ -114,7 +114,7 @@ Type a padded prompt such as `please could you actually just check the code`. Th
 
 **GitHub / GitLab**
 
-Paste an `origin` URL on a folder that is already a git repo. AgentDeck runs `git remote add|set-url origin`. Auth stays with your git credentials.
+Paste an `origin` URL on a folder that is already a git repo. Purser runs `git remote add|set-url origin`. Auth stays with your git credentials.
 
 ---
 
@@ -136,7 +136,7 @@ flowchart TB
   subgraph companion [Companion — today, one user]
     UI[Vite UI]
     R[Runner :7420]
-    SQLite[(SQLite ~/.agentdeck)]
+    SQLite[(SQLite ~/.purser)]
     Disk[Granted folders]
     UI --> R
     R --> SQLite
@@ -197,7 +197,7 @@ sequenceDiagram
 
 | Gate | Users | Datastore | Compute | Isolation |
 | --- | ---: | --- | --- | --- |
-| Local companion | 1 | SQLite in `~/.agentdeck` | One runner process | One machine, no multi-tenant sharing |
+| Local companion | 1 | SQLite in `~/.purser` | One runner process | One machine, no multi-tenant sharing |
 | Team cell | ~10k | Postgres + object storage | Kubernetes runners | **One tenant per runner process** |
 | Regional cells | millions | Sharded Postgres, cell per region | Tenant-hashed routing (`routeTenant`) | Cells do not share runners or DBs |
 
@@ -236,9 +236,9 @@ docs/COMPETITORS.md      honest matrix vs other orchestrators (asOf 2026-08-25)
 docs/PLATFORM-RISK.md    vendor terms we actually opened, not guesses
 docs/REVIEW.md           this file
 LICENSE                  **not chosen** — human decision
-PRICING.md               AgentDeck’s own price **not chosen** — human decision
-Formula/agentdeck.rb     Homebrew template (sha256 zeros until a real release)
-install.sh               download + SHA256SUMS verify (needs AGENTDECK_REPO)
+PRICING.md               Purser’s own price **not chosen** — human decision
+Formula/purser.rb     Homebrew template (sha256 zeros until a real release)
+install.sh               download + SHA256SUMS verify (needs PURSER_REPO)
 ```
 
 | Concern | Primary files |
@@ -319,7 +319,7 @@ Agent events inside `agent_event`: `session_started`, `text_delta`, `text`, `thi
 
 ## 7. Data and secrets
 
-**SQLite** (`~/.agentdeck/agentdeck.sqlite`, WAL): workspaces, sessions, events, runs, provider configs (no raw keys), voice profiles, settings, append-only `token_ledger`, `budgets`. Folder watches are stored under settings key `folder_watches` but **stripped out** of the generic `settings` array in `loadState` so the UI reads `folderWatches` only. Day/month spend buckets by **run start timestamp** (UTC).
+**SQLite** (`~/.purser/purser.sqlite`, WAL): workspaces, sessions, events, runs, provider configs (no raw keys), voice profiles, settings, append-only `token_ledger`, `budgets`. Folder watches are stored under settings key `folder_watches` but **stripped out** of the generic `settings` array in `loadState` so the UI reads `folderWatches` only. Day/month spend buckets by **run start timestamp** (UTC).
 
 **Postgres schema** exists for cells. It is not live.
 
@@ -327,12 +327,12 @@ Agent events inside `agent_event`: `session_started`, `text_delta`, `text`, `thi
 
 | Path | Role |
 | --- | --- |
-| `~/.agentdeck/config.json` | Token, port, allowedRoots (`0600`) |
-| `~/.agentdeck/secrets.json` | Provider API keys |
-| `~/.agentdeck/pricing.json` | Optional catalog overrides (see [METERING.md](METERING.md)) |
-| `~/.agentdeck/audit.jsonl` | Hash-chained audit log (`0600`). Rotated files `audit-*.jsonl`. |
+| `~/.purser/config.json` | Token, port, allowedRoots (`0600`) |
+| `~/.purser/secrets.json` | Provider API keys |
+| `~/.purser/pricing.json` | Optional catalog overrides (see [METERING.md](METERING.md)) |
+| `~/.purser/audit.jsonl` | Hash-chained audit log (`0600`). Rotated files `audit-*.jsonl`. |
 | `{workspace}/.inbox/` | Synced drop files |
-| `{workspace}/.agentdeck/worktrees/…` | Isolated git worktree per session when applicable |
+| `{workspace}/.purser/worktrees/…` | Isolated git worktree per session when applicable |
 
 **Workspace row** includes `absPath` (companion only) and `gitRemote`. Cloud cells must not persist laptop paths.
 
@@ -380,7 +380,7 @@ Full threat model: [SECURITY.md](SECURITY.md).
 - Mutating tools ask unless auto-edit/bypass (bypass expires).
 - Relay has no session store; it can still see ciphertext length after seal.
 - Future cells: one tenant per runner; no shared agent process across orgs.
-- Same-user local processes can read `~/.agentdeck` — we do not claim otherwise.
+- Same-user local processes can read `~/.purser` — we do not claim otherwise.
 
 ---
 
@@ -395,7 +395,7 @@ Three columns: workspaces/sessions · chat · provider/inbox/git/files.
 - File tree: folders navigate, files preview.
 - Top bar: connection, voice, last sync if a watch is active.
 
-This is an **operator console**, not a full IDE. The editor remains VS Code or Cursor if you want one; AgentDeck owns agents, disk grants, and spend.
+This is an **operator console**, not a full IDE. The editor remains VS Code or Cursor if you want one; Purser owns agents, disk grants, and spend.
 
 ---
 
@@ -424,7 +424,7 @@ Sign-off questions:
 - Do you accept **folder watch on the laptop only**, never as a cloud `/home` path?
 - Do you accept **cells** as the million-user story, not one SQLite?
 - Do you accept the **spend ledger / budget / audit** wedge, given the 2026 orchestrator field?
-- Which **license** and which **AgentDeck price** (if any)?
+- Which **license** and which **Purser price** (if any)?
 - Should marketplace VS Code/Cursor extensions be the next build, or hosted cells, or more adapters?
 
 More product updates can land on this skeleton without rewriting the console.

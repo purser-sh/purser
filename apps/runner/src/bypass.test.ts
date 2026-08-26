@@ -1,18 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { insertSession, insertWorkspace, openSqliteDatabase, seedDefaults } from "@agentdeck/db";
+import { insertSession, insertWorkspace, openSqliteDatabase, seedDefaults } from "@purser-sh/db";
 import { bypassStillActive, consumeBypassRun, enableBypass, refreshBypass } from "./bypass.ts";
 import { appendAudit, auditPath } from "./audit.ts";
 
 describe("bypass guard", () => {
   test("expires after TTL", async () => {
-    process.env.AGENTDECK_HOME = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-home-"));
+    process.env.PURSER_HOME = mkdtempSync(join(tmpdir(), ".tmp-home-"));
     const db = openSqliteDatabase(":memory:");
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
       name: "Demo",
-      absPath: "/home/aksingh/AgentDeck",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {
@@ -34,12 +35,12 @@ describe("bypass guard", () => {
   });
 
   test("run count reaches zero after the last run slot is consumed", async () => {
-    process.env.AGENTDECK_HOME = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-home-"));
+    process.env.PURSER_HOME = mkdtempSync(join(tmpdir(), ".tmp-home-"));
     const db = openSqliteDatabase(":memory:");
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
       name: "Demo",
-      absPath: "/home/aksingh/AgentDeck",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {
@@ -61,7 +62,7 @@ describe("bypass guard", () => {
 
 describe("audit jsonl", () => {
   test("appends bypassed tool calls without secrets or file bodies", () => {
-    const home = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-home-"));
+    const home = mkdtempSync(join(tmpdir(), ".tmp-home-"));
     appendAudit(home, {
       ts: "2026-08-25T12:00:00.000Z",
       type: "tool_call",

@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import { deriveRelayKey, isSealedFrame, openSealed } from "@agentdeck/integrations";
+import { deriveRelayKey, isSealedFrame, openSealed } from "@purser-sh/integrations";
 
 export type RelayHandle = {
   url: string;

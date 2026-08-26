@@ -8,11 +8,11 @@ describe("resolveDatabaseDriver", () => {
   });
 
   test("detects postgres URLs", () => {
-    expect(resolveDatabaseDriver("postgres://localhost/agentdeck").driver).toBe("postgres");
-    expect(resolveDatabaseDriver("postgresql://localhost/agentdeck").driver).toBe("postgres");
+    expect(resolveDatabaseDriver("postgres://localhost/purser").driver).toBe("postgres");
+    expect(resolveDatabaseDriver("postgresql://localhost/purser").driver).toBe("postgres");
   });
 
   test("treats file URLs as sqlite", () => {
-    expect(resolveDatabaseDriver("file:./agentdeck.sqlite").driver).toBe("sqlite");
+    expect(resolveDatabaseDriver("file:./purser.sqlite").driver).toBe("sqlite");
   });
 });

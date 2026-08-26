@@ -1,14 +1,21 @@
 import { countTokens as countAnthropicTokens } from "@anthropic-ai/tokenizer";
-import { encode } from "gpt-tokenizer";
+import { encode as encodeCl100k } from "gpt-tokenizer";
+import { encode as encodeO200k } from "gpt-tokenizer/encoding/o200k_base";
+import gpt4oTokenizer from "gpt-tokenizer/model/gpt-4o";
+import o1Tokenizer from "gpt-tokenizer/model/o1";
+import o3MiniTokenizer from "gpt-tokenizer/model/o3-mini";
+import { familyForModel, openAiEncodingForModel, type TokenizerFamily } from "./model-family.ts";
 
-export type TokenizerFamily = "openai" | "anthropic" | "google" | "unknown";
+export type { TokenizerFamily } from "./model-family.ts";
+export { familyForModel, openAiEncodingForModel } from "./model-family.ts";
+
 export type TokenCountSource = "exact" | "approximate";
 
 /** Structured count — never pass a bare number to the UI. */
 export type TokenCount = {
   value: number;
   source: TokenCountSource;
-  /** Library that produced the count. */
+  /** Library + encoding that produced the count. */
   tokenizer: string;
   providerFamily: TokenizerFamily;
 };
@@ -17,59 +24,97 @@ export const TOKENIZER_GPT = "gpt-tokenizer";
 export const TOKENIZER_ANTHROPIC = "@anthropic-ai/tokenizer";
 export const TOKENIZER_HEURISTIC = "heuristic";
 
-/** Classify a raw count. `tokenizerFamily` null means heuristic (never exact). */
+type ModelEncoder = {
+  encode: (text: string) => number[];
+  label: string;
+};
+
+function openAiEncoder(modelId: string): ModelEncoder | null {
+  const spec = openAiEncodingForModel(modelId);
+  if (spec === null) {
+    return null;
+  }
+  if (spec.kind === "o200k_base") {
+    return { encode: encodeO200k, label: `${TOKENIZER_GPT}/o200k_base` };
+  }
+  if (spec.kind === "cl100k_base") {
+    return { encode: encodeCl100k, label: `${TOKENIZER_GPT}/cl100k_base` };
+  }
+  if (spec.module === "o1") {
+    return { encode: o1Tokenizer.encode, label: `${TOKENIZER_GPT}/model/o1` };
+  }
+  if (spec.module === "o3-mini") {
+    return { encode: o3MiniTokenizer.encode, label: `${TOKENIZER_GPT}/model/o3-mini` };
+  }
+  if (spec.module === "gpt-4o" || spec.module?.startsWith("gpt-4o-") === true) {
+    return { encode: gpt4oTokenizer.encode, label: `${TOKENIZER_GPT}/model/gpt-4o` };
+  }
+  return null;
+}
+
+/** Classify a raw count. Exact only on a positive family + tokenizer match. */
 export function makeTokenCount(
   value: number,
   tokenizer: string,
   providerFamily: TokenizerFamily,
-  tokenizerFamily: TokenizerFamily | null,
+  exact: boolean,
 ): TokenCount {
-  const source: TokenCountSource =
-    tokenizerFamily !== null && tokenizerFamily === providerFamily ? "exact" : "approximate";
-  return { value, source, tokenizer, providerFamily };
+  return { value, source: exact ? "exact" : "approximate", tokenizer, providerFamily };
 }
 
 /**
- * Count tokens for a provider family.
- * `exact` only when the tokenizer's family matches `family`; otherwise `approximate`
- * (including gpt-tokenizer over Anthropic/Google prompts, and any heuristic fallback).
+ * Count tokens for a model id.
+ * `exact` only when the tokenizer positively matches the resolved model family
+ * (and, for OpenAI ids, the encoding is known). Everything else is approximate.
  */
-export function countTokens(text: string, family: TokenizerFamily): TokenCount {
+export function countTokens(text: string, modelId?: string | null): TokenCount {
   const trimmed = text.trim();
+  const family = familyForModel(modelId);
+  const model = (modelId ?? "").trim();
+
   if (trimmed.length === 0) {
     if (family === "anthropic") {
-      return makeTokenCount(0, TOKENIZER_ANTHROPIC, family, "anthropic");
+      return makeTokenCount(0, TOKENIZER_ANTHROPIC, family, true);
     }
-    return makeTokenCount(0, TOKENIZER_GPT, family, "openai");
+    if (family === "openai") {
+      const enc = openAiEncoder(model);
+      return makeTokenCount(0, enc?.label ?? `${TOKENIZER_GPT}/cl100k_base`, family, enc !== null);
+    }
+    return makeTokenCount(0, `${TOKENIZER_GPT}/cl100k_base`, family, false);
   }
+
   try {
     if (family === "anthropic") {
-      return makeTokenCount(countAnthropicTokens(trimmed), TOKENIZER_ANTHROPIC, family, "anthropic");
+      return makeTokenCount(countAnthropicTokens(trimmed), TOKENIZER_ANTHROPIC, family, true);
     }
-    return makeTokenCount(encode(trimmed).length, TOKENIZER_GPT, family, "openai");
-  } catch {
-    return makeTokenCount(Math.ceil(trimmed.length / 4), TOKENIZER_HEURISTIC, family, null);
-  }
-}
 
-export function familyForProvider(providerId: string): TokenizerFamily {
-  if (providerId === "claude_code") {
-    return "anthropic";
+    if (family === "openai") {
+      const enc = openAiEncoder(model);
+      if (enc === null) {
+        return makeTokenCount(
+          encodeCl100k(trimmed).length,
+          `${TOKENIZER_GPT}/cl100k_base`,
+          family,
+          false,
+        );
+      }
+      return makeTokenCount(enc.encode(trimmed).length, enc.label, family, true);
+    }
+
+    return makeTokenCount(
+      encodeCl100k(trimmed).length,
+      `${TOKENIZER_GPT}/cl100k_base`,
+      family,
+      false,
+    );
+  } catch {
+    return makeTokenCount(
+      Math.ceil(trimmed.length / 4),
+      TOKENIZER_HEURISTIC,
+      family,
+      false,
+    );
   }
-  if (providerId === "gemini_cli") {
-    return "google";
-  }
-  if (
-    providerId === "codex" ||
-    providerId === "generic_llm" ||
-    providerId === "grok" ||
-    providerId === "ollama" ||
-    providerId === "perplexity" ||
-    providerId === "echo"
-  ) {
-    return "openai";
-  }
-  return "unknown";
 }
 
 /** UI-facing formatting. Accepts TokenCount only — a bare number is a type error. */
@@ -80,12 +125,12 @@ export function formatTokenCount(count: TokenCount): string {
 
 export function tokenCountTooltip(count: TokenCount): string {
   if (count.source === "exact") {
-    return `Exact for this provider family (${count.providerFamily}): counted with ${count.tokenizer}.`;
+    return `Exact for model family ${count.providerFamily}: counted with ${count.tokenizer}.`;
   }
   if (count.tokenizer === TOKENIZER_HEURISTIC) {
-    return `Approximate: tokenizer failed; fell back to ${TOKENIZER_HEURISTIC} (chars/4). Provider family is ${count.providerFamily}.`;
+    return `Approximate: tokenizer failed; fell back to ${TOKENIZER_HEURISTIC} (chars/4). Model family is ${count.providerFamily}.`;
   }
-  return `Approximate: counted with ${count.tokenizer}, which does not match provider family ${count.providerFamily}. Not a billable count.`;
+  return `Approximate: counted with ${count.tokenizer}; it does not match model family ${count.providerFamily} (or encoding is unknown). Not a billable count.`;
 }
 
 /** Prefer approximate when combining two counts (e.g. original + compact). */

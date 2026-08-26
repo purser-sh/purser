@@ -25,8 +25,8 @@ describe("sqlite core", () => {
     await seedDefaults(db);
 
     const workspace = insertWorkspace(db, {
-      name: "AgentDeck",
-      absPath: "/home/aksingh/AgentDeck",
+      name: "Purser",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {
@@ -69,8 +69,8 @@ describe("sqlite core", () => {
     const db = openMemory();
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
-      name: "AgentDeck",
-      absPath: "/home/aksingh/AgentDeck",
+      name: "Purser",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     saveFolderWatches(db, [{ workspaceId: workspace.id, absPath: "/home/aksingh/xyz", enabled: true }]);
@@ -82,15 +82,15 @@ describe("sqlite core", () => {
   });
 
   test("rejects postgres urls", () => {
-    expect(() => openSqliteDatabase("postgres://localhost/agentdeck")).toThrow(/Postgres/);
+    expect(() => openSqliteDatabase("postgres://localhost/purser")).toThrow(/Postgres/);
   });
 
   test("token_ledger is append-only and stores NULL cost for unpriced rows", async () => {
     const db = openMemory();
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
-      name: "AgentDeck",
-      absPath: "/home/aksingh/AgentDeck",
+      name: "Purser",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {
@@ -125,8 +125,8 @@ describe("sqlite core", () => {
     const db = openMemory();
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
-      name: "AgentDeck",
-      absPath: "/home/aksingh/AgentDeck",
+      name: "Purser",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     upsertBudget(db, {

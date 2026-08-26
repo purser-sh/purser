@@ -1,8 +1,8 @@
-import type { PermissionMode, Session } from "@agentdeck/protocol";
-import { getSession, updateSession, type AppDatabase } from "@agentdeck/db";
+import type { PermissionMode, Session } from "@purser-sh/protocol";
+import { getSession, updateSession, type AppDatabase } from "@purser-sh/db";
 import type { RunnerConfig } from "./config.ts";
 import { appendAudit } from "./audit.ts";
-import { agentdeckDir } from "./config.ts";
+import { purserDir } from "./config.ts";
 
 export const DEFAULT_BYPASS_TTL_MS = 30 * 60 * 1000;
 export const DEFAULT_BYPASS_MAX_RUNS = 10;
@@ -39,7 +39,7 @@ export function enableBypass(db: AppDatabase, sessionId: string, config: RunnerC
     bypassRunsRemaining: bypassMaxRuns(config),
   });
   if (session !== undefined) {
-    appendAudit(agentdeckDir(), {
+    appendAudit(purserDir(), {
       ts: new Date(now).toISOString(),
       type: "bypass_enable",
       sessionId,
@@ -62,7 +62,7 @@ export function clearBypass(
     bypassExpiresAt: null,
     bypassRunsRemaining: null,
   });
-  appendAudit(agentdeckDir(), {
+  appendAudit(purserDir(), {
     ts: new Date(now).toISOString(),
     type: "bypass_expire",
     sessionId,

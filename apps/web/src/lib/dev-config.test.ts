@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { agentdeckConfigStatus, handleAgentdeckConfigRoute } from "./dev-config.ts";
+import { purserConfigStatus, handlePurserConfigRoute } from "./dev-config.ts";
 
 describe("dev config route", () => {
   test("production mode is 404", () => {
-    expect(agentdeckConfigStatus("production")).toBe(404);
-    expect(agentdeckConfigStatus("development")).toBe(200);
+    expect(purserConfigStatus("production")).toBe(404);
+    expect(purserConfigStatus("development")).toBe(200);
   });
 
   test("a production-mode handler returns 404 and never CORS", () => {
@@ -21,7 +21,7 @@ describe("dev config route", () => {
         }
       },
     };
-    handleAgentdeckConfigRoute({
+    handlePurserConfigRoute({
       mode: "production",
       req: {
         headers: {
@@ -31,7 +31,7 @@ describe("dev config route", () => {
         },
       },
       res,
-      repoRoot: "/home/aksingh/AgentDeck",
+      repoRoot: process.cwd(),
     });
     expect(res.statusCode).toBe(404);
     expect(headers.get("access-control-allow-origin")).toBeUndefined();
@@ -47,11 +47,11 @@ describe("dev config route", () => {
       },
       end(_chunk?: unknown) {},
     };
-    handleAgentdeckConfigRoute({
+    handlePurserConfigRoute({
       mode: "development",
       req: { headers: { host: "127.0.0.1:7410" } },
       res,
-      repoRoot: "/home/aksingh/AgentDeck",
+      repoRoot: process.cwd(),
     });
     expect(res.statusCode).toBe(403);
     expect(headers.get("access-control-allow-origin")).toBeUndefined();

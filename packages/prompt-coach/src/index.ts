@@ -2,8 +2,7 @@ import {
   countTokens,
   worseTokenSource,
   type TokenCount,
-  type TokenizerFamily,
-} from "@agentdeck/pricing";
+} from "@purser-sh/pricing";
 
 export type PromptEstimate = {
   tokens: TokenCount;
@@ -40,8 +39,8 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function estimateTokens(text: string, family: TokenizerFamily = "openai"): TokenCount {
-  return countTokens(text, family);
+export function estimateTokens(text: string, modelId?: string | null): TokenCount {
+  return countTokens(text, modelId);
 }
 
 function preserveCodeFences(text: string): { body: string; fences: string[] } {
@@ -73,21 +72,21 @@ export function compactPrompt(text: string): string {
   return compact.length > 0 ? compact : text.trim();
 }
 
-export function coachPrompt(text: string, family: TokenizerFamily = "openai"): PromptEstimate {
-  const tokens = estimateTokens(text, family);
+export function coachPrompt(text: string, modelId?: string | null): PromptEstimate {
+  const tokens = estimateTokens(text, modelId);
   const compactText = compactPrompt(text);
-  const compactTokens = estimateTokens(compactText, family);
+  const compactTokens = estimateTokens(compactText, modelId);
   const source = worseTokenSource(tokens.source, compactTokens.source);
   const notes: string[] = [
     "This counts the prompt only. Most spend is the agent loop after Send — watch the run spend meter.",
   ];
   if (source === "exact") {
-    notes.push(`Counted with ${tokens.tokenizer} (exact for ${family}).`);
+    notes.push(`Counted with ${tokens.tokenizer} (exact for model family ${tokens.providerFamily}).`);
   } else if (tokens.tokenizer === "heuristic") {
-    notes.push(`Fell back to a character heuristic because the tokenizer failed. Provider family is ${family}.`);
+    notes.push(`Fell back to a character heuristic because the tokenizer failed. Model family is ${tokens.providerFamily}.`);
   } else {
     notes.push(
-      `Approximate: counted with ${tokens.tokenizer}; it does not match provider family ${family}. The provider bill can differ.`,
+      `Approximate: counted with ${tokens.tokenizer}; model family is ${tokens.providerFamily}. The provider bill can differ.`,
     );
   }
   if (compactTokens.value < tokens.value) {

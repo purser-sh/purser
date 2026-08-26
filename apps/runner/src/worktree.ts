@@ -1,19 +1,19 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { agentdeckDir } from "./config.ts";
+import { purserDir } from "./config.ts";
 import { isGitRepo } from "./git.ts";
 
 export function createSessionWorktree(workspaceAbsPath: string, sessionId: string): string | null {
   if (!isGitRepo(workspaceAbsPath)) {
     return null;
   }
-  const dest = join(agentdeckDir(), "worktrees", sessionId);
+  const dest = join(purserDir(), "worktrees", sessionId);
   if (existsSync(dest)) {
     return dest;
   }
-  mkdirSync(join(agentdeckDir(), "worktrees"), { recursive: true, mode: 0o700 });
-  const branch = `agentdeck/${sessionId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24)}`;
+  mkdirSync(join(purserDir(), "worktrees"), { recursive: true, mode: 0o700 });
+  const branch = `purser/${sessionId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24)}`;
   const result = spawnSync(
     "git",
     ["-C", workspaceAbsPath, "worktree", "add", "-b", branch, dest, "HEAD"],

@@ -134,7 +134,7 @@ export async function executeTool(input: {
         return { ok: true, output: `wrote ${path}`, summary: `wrote ${path}` };
       }
       case "apply_patch": {
-        const patchPath = join(tmpdir(), `agentdeck-patch-${crypto.randomUUID()}.diff`);
+        const patchPath = join(tmpdir(), `purser-patch-${crypto.randomUUID()}.diff`);
         writeFileSync(patchPath, str(input.args.patch));
         const result = spawnSync("git", ["apply", "--unsafe-paths", patchPath], {
           cwd: input.cwd,

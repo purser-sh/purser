@@ -1,5 +1,5 @@
 import type { AgentAdapter, AdapterConfig } from "../types.ts";
-import type { CostModel } from "@agentdeck/protocol";
+import type { CostModel } from "@purser-sh/protocol";
 import { runToolLoop } from "./loop.ts";
 
 async function fetchModels(baseUrl: string, apiKey: string | null): Promise<{ id: string; label: string }[]> {

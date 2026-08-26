@@ -30,8 +30,8 @@ export function LeftRail(props: { onOpenWorkspace: () => void }) {
   }, [workspaces, sessions, search]);
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-card/40">
-      <div className="flex items-center justify-between px-3 py-3 text-xs uppercase tracking-wider text-muted-foreground">
+    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card/40">
+      <div className="flex items-center justify-between px-3 py-3 text-[length:var(--text-2xs)] label-caps text-muted-foreground">
         Workspaces
       </div>
       <div className="flex-1 overflow-y-auto px-2 pb-3">
@@ -53,7 +53,7 @@ export function LeftRail(props: { onOpenWorkspace: () => void }) {
                 <ChevronDown className={`h-3.5 w-3.5 transition ${expanded ? "" : "-rotate-90"}`} />
                 <span className="flex-1 truncate font-medium">{workspace.name}</span>
                 {workspace.gitRemote ? (
-                  <span className="rounded border border-border px-1 text-[9px] uppercase text-muted-foreground">git</span>
+                  <span className="rounded border border-border px-1 text-[length:var(--text-2xs)] label-caps text-muted-foreground">git</span>
                 ) : null}
                 <button
                   className="text-muted-foreground hover:text-destructive"
@@ -80,10 +80,10 @@ export function LeftRail(props: { onOpenWorkspace: () => void }) {
                       <span
                         className={`h-2 w-2 rounded-full ${
                           session.status === "running"
-                            ? "animate-pulse bg-amber-400"
+                            ? "animate-pulse bg-warn"
                             : session.status === "error"
-                              ? "bg-destructive"
-                              : "bg-zinc-500"
+                              ? "bg-block"
+                              : "bg-muted-foreground/50"
                         }`}
                       />
                       <span className="flex-1 truncate">{session.title}</span>
@@ -114,7 +114,7 @@ export function LeftRail(props: { onOpenWorkspace: () => void }) {
         {filtered.length === 0 ? (
           <div className="px-2">
             <p className="mb-2 text-sm text-muted-foreground">No workspaces yet.</p>
-            <Button className="w-full" onClick={props.onOpenWorkspace} size="sm" type="button">
+            <Button className="w-full" onClick={props.onOpenWorkspace} size="sm" type="button" variant="outline">
               <Plus className="h-3.5 w-3.5" />
               Open a folder
             </Button>

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendAudit, auditPath, canonicalJson, hashPath, verifyAudit, ZERO_HASH } from "./audit.ts";
 
 describe("audit chain", () => {
   test("chains prevHash and verify succeeds", () => {
-    const home = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-audit-"));
+    const home = mkdtempSync(join(tmpdir(), ".tmp-audit-"));
     const first = appendAudit(home, { ts: "2026-08-25T12:00:00.000Z", type: "run_started", runId: "run_1" });
     expect(first.prevHash).toBe(ZERO_HASH);
     appendAudit(home, { ts: "2026-08-25T12:00:01.000Z", type: "run_finished", runId: "run_1", outcome: "ok" });
@@ -14,7 +15,7 @@ describe("audit chain", () => {
   });
 
   test("detects a tampered line", () => {
-    const home = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-audit-"));
+    const home = mkdtempSync(join(tmpdir(), ".tmp-audit-"));
     appendAudit(home, { ts: "2026-08-25T12:00:00.000Z", type: "secret_write", providerId: "grok" });
     appendAudit(home, { ts: "2026-08-25T12:00:01.000Z", type: "relay_pair" });
     const path = auditPath(home);
@@ -31,7 +32,7 @@ describe("audit chain", () => {
   });
 
   test("continues the chain across rotation", () => {
-    const home = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-audit-"));
+    const home = mkdtempSync(join(tmpdir(), ".tmp-audit-"));
     appendAudit(home, { ts: "2026-08-25T12:00:00.000Z", type: "run_started" }, { rotateAt: 80 });
     appendAudit(home, { ts: "2026-08-25T12:00:01.000Z", type: "tool_call", toolName: "write_file", path: "/tmp/a.ts" }, { rotateAt: 80 });
     const result = verifyAudit(home);
@@ -42,7 +43,7 @@ describe("audit chain", () => {
   });
 
   test("redactPaths hashes companion paths", () => {
-    const home = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-audit-"));
+    const home = mkdtempSync(join(tmpdir(), ".tmp-audit-"));
     appendAudit(
       home,
       { ts: "2026-08-25T12:00:00.000Z", type: "diff_response", path: "/home/aksingh/secret/file.ts" },

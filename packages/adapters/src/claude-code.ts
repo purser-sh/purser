@@ -1,5 +1,5 @@
 /// <reference path="./claude-sdk.d.ts" />
-import type { AgentEvent } from "@agentdeck/protocol";
+import type { AgentEvent } from "@purser-sh/protocol";
 import type { AgentAdapter, RunInput } from "./types.ts";
 import { which } from "./cli/which.ts";
 import { usageEventFromProvider } from "./usage.ts";

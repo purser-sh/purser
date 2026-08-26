@@ -1,4 +1,4 @@
-import type { AgentEvent, EventRole, ServerMessage } from "@agentdeck/protocol";
+import type { AgentEvent, EventRole, ServerMessage } from "@purser-sh/protocol";
 import {
   finishRun,
   getProviderConfig,
@@ -9,13 +9,13 @@ import {
   insertRun,
   updateSession,
   type AppDatabase,
-} from "@agentdeck/db";
+} from "@purser-sh/db";
 import { getAdapter } from "./registry.ts";
 import { appendRunLog } from "./run-log.ts";
 import { getSecret } from "./secrets.ts";
 import { buildExtraPrompt } from "./skills.ts";
 import { appendAudit } from "./audit.ts";
-import { agentdeckDir } from "./config.ts";
+import { purserDir } from "./config.ts";
 import { finalizeRunLedger, recordUsageEvent } from "./meter.ts";
 import {
   buildSpendUpdate,
@@ -23,7 +23,7 @@ import {
   inFlightGate,
   withLedgerLock,
 } from "./budget.ts";
-import type { BudgetDecision, BudgetStatus, SpendUpdatePayload } from "@agentdeck/protocol";
+import type { BudgetDecision, BudgetStatus, SpendUpdatePayload } from "@purser-sh/protocol";
 
 const SKIP_PERSIST = new Set<AgentEvent["kind"]>(["text_delta"]);
 
@@ -138,7 +138,7 @@ export async function executeRun(input: {
       }
       if (event.kind === "tool_call") {
         const live = getSession(input.db, input.sessionId);
-        appendAudit(agentdeckDir(), {
+        appendAudit(purserDir(), {
           ts: new Date().toISOString(),
           type: "tool_call",
           sessionId: input.sessionId,
@@ -262,7 +262,7 @@ export async function executeRun(input: {
     finalizeRunLedger(input.db, latest, input.runId, observedText);
     input.onSpendUpdate?.(buildSpendUpdate(input.db, latest, input.runId, startedAt, extraUsdByBudget), true);
     finishRun(input.db, input.runId, runStatus === "ok" ? "ok" : runStatus, runError);
-    appendAudit(agentdeckDir(), {
+    appendAudit(purserDir(), {
       ts: new Date().toISOString(),
       type: "run_finished",
       sessionId: input.sessionId,

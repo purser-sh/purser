@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@agentdeck/protocol";
+import type { AgentEvent } from "@purser-sh/protocol";
 import { usageEventFromProvider } from "../usage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {

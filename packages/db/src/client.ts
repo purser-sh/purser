@@ -15,11 +15,11 @@ export function migrationsFolder(): string {
   return new URL("../drizzle", import.meta.url).pathname;
 }
 
-export function openSqliteDatabase(url = process.env.AGENTDECK_DATABASE_URL): AppDatabase {
+export function openSqliteDatabase(url = process.env.PURSER_DATABASE_URL): AppDatabase {
   const resolved = resolveDatabaseDriver(url);
   if (resolved.driver === "postgres") {
     throw new Error(
-      "Postgres is selected via AGENTDECK_DATABASE_URL, but the live driver is SQLite in Phase 1. Unset the URL to use ~/.agentdeck/agentdeck.sqlite.",
+      "Postgres is selected via PURSER_DATABASE_URL, but the live driver is SQLite in Phase 1. Unset the URL to use ~/.purser/purser.sqlite.",
     );
   }
   const filePath = resolveSqliteFilePath(resolved.url);

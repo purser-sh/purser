@@ -1,6 +1,6 @@
-import type { AgentEvent } from "@agentdeck/protocol";
+import type { AgentEvent } from "@purser-sh/protocol";
 import type { AgentAdapter, RunInput } from "./types.ts";
-import { countTokens } from "@agentdeck/pricing";
+import { countTokens } from "@purser-sh/pricing";
 
 function assertNotAborted(signal: AbortSignal): void {
   if (signal.aborted) {
@@ -41,17 +41,17 @@ export const echoAdapter: AgentAdapter = {
         kind: "tool_result",
         toolId: "echo-read-1",
         ok: true,
-        output: "# AgentDeck\n",
+        output: "# Purser\n",
         ms: 1,
       },
       {
         kind: "file_diff",
         path: "README.md",
-        patch: "@@ -1,1 +1,2 @@\n # AgentDeck\n+# echoed\n",
+        patch: "@@ -1,1 +1,2 @@\n # Purser\n+# echoed\n",
         added: 1,
         removed: 0,
       },
-      { kind: "usage", inputTokens: countTokens(input.prompt, "openai").value, outputTokens: countTokens(`You said: ${input.prompt}`, "openai").value, cacheReadTokens: null, cacheWriteTokens: null, source: "estimated" },
+      { kind: "usage", inputTokens: countTokens(input.prompt, "echo-v1").value, outputTokens: countTokens(`You said: ${input.prompt}`, "echo-v1").value, cacheReadTokens: null, cacheWriteTokens: null, source: "estimated" },
       { kind: "done", status: "ok", summary: "Echoed your message" },
     ];
 

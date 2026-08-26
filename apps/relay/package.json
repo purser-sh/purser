@@ -1,5 +1,5 @@
 {
-  "name": "@agentdeck/relay",
+  "name": "@purser-sh/relay",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentdeck/integrations": "workspace:*",
+    "@purser-sh/integrations": "workspace:*",
     "ws": "^8.18.3"
   },
   "devDependencies": {

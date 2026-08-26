@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readWorkspaceFile, resolveInRoot, SandboxError } from "./sandbox.ts";
 import { executeTool } from "./generic-llm/tools.ts";
@@ -8,7 +9,7 @@ import { which } from "./cli/which.ts";
 
 describe("sandbox", () => {
   test("rejects path traversal", () => {
-    const root = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-sb-"));
+    const root = mkdtempSync(join(tmpdir(), ".tmp-sb-"));
     mkdirSync(join(root, "src"));
     writeFileSync(join(root, "src", "a.ts"), "export {}\n");
     expect(() => resolveInRoot(root, "../etc/passwd")).toThrow(SandboxError);
@@ -18,7 +19,7 @@ describe("sandbox", () => {
 
 describe("tools", () => {
   test("lists and reads inside the workspace", async () => {
-    const root = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-tool-"));
+    const root = mkdtempSync(join(tmpdir(), ".tmp-tool-"));
     writeFileSync(join(root, "hello.txt"), "hi\n");
     const listed = await executeTool({ name: "list_dir", args: { path: "." }, cwd: root });
     expect(listed.ok).toBe(true);
@@ -48,6 +49,6 @@ describe("jsonl mapper", () => {
 describe("which", () => {
   test("finds sh", () => {
     expect(which("sh")).not.toBeNull();
-    expect(which("definitely-not-a-binary-agentdeck")).toBeNull();
+    expect(which("definitely-not-a-binary-purser")).toBeNull();
   });
 });

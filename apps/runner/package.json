@@ -1,8 +1,11 @@
 {
-  "name": "@agentdeck/runner",
+  "name": "@purser-sh/runner",
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "bin": {
+    "purser": "./src/index.ts"
+  },
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
@@ -11,13 +14,13 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentdeck/adapters": "workspace:*",
-    "@agentdeck/db": "workspace:*",
-    "@agentdeck/protocol": "workspace:*",
-    "@agentdeck/prompt-coach": "workspace:*",
-    "@agentdeck/integrations": "workspace:*",
-    "@agentdeck/pricing": "workspace:*",
-    "@agentdeck/voice": "workspace:*",
+    "@purser-sh/adapters": "workspace:*",
+    "@purser-sh/db": "workspace:*",
+    "@purser-sh/protocol": "workspace:*",
+    "@purser-sh/prompt-coach": "workspace:*",
+    "@purser-sh/integrations": "workspace:*",
+    "@purser-sh/pricing": "workspace:*",
+    "@purser-sh/voice": "workspace:*",
     "ws": "^8.18.3",
     "zod": "^4.0.17"
   },

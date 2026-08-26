@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyDropChange } from "./folder-watch.ts";
 
 describe("drop folder copy", () => {
   test("copies new files into .inbox and skips the inbox itself", () => {
-    const root = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-drop-"));
+    const root = mkdtempSync(join(tmpdir(), ".tmp-drop-"));
     const source = join(root, "xyz");
     const inbox = join(root, "project", ".inbox");
     mkdirSync(source, { recursive: true });

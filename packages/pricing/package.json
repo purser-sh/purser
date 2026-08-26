@@ -1,10 +1,11 @@
 {
-  "name": "@agentdeck/pricing",
+  "name": "@purser-sh/pricing",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts"
   },
   "scripts": {
     "test": "bun test",

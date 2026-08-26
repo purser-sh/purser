@@ -1,25 +1,24 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentEvent, CostModel, Session } from "@agentdeck/protocol";
+import type { AgentEvent, CostModel, Session } from "@purser-sh/protocol";
 import {
   appendLedgerEntry,
   listLedgerByRun,
   type AppDatabase,
   type LedgerSource,
-} from "@agentdeck/db";
+} from "@purser-sh/db";
 import {
   countTokens,
-  familyForProvider,
   mergeCatalog,
   parseUserPricingJson,
   priceFor,
   type CatalogRow,
-} from "@agentdeck/pricing";
-import { agentdeckDir } from "./config.ts";
+} from "@purser-sh/pricing";
+import { purserDir } from "./config.ts";
 import { getAdapter } from "./registry.ts";
 
 function loadCatalog(): CatalogRow[] {
-  const path = join(agentdeckDir(), "pricing.json");
+  const path = join(purserDir(), "pricing.json");
   if (!existsSync(path)) {
     return mergeCatalog([]);
   }
@@ -84,7 +83,7 @@ export function finalizeRunLedger(
   let outputTokens = 0;
   let source: LedgerSource = "provider_usage";
   if (!hasPositive) {
-    const counted = countTokens(observedText, familyForProvider(session.providerId));
+    const counted = countTokens(observedText, session.modelId);
     inputTokens = counted.value;
     source = "estimated";
   }

@@ -1,0 +1,139 @@
+/* Purser design tokens — light default, dark via media query or data-theme */
+
+:root {
+  /* Surfaces */
+  --bg: #f7f8f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f4;
+  --border: #e2e6e9;
+  --border-soft: #edf0f2;
+
+  /* Text */
+  --text: #0f1518;
+  --text-2: #4a5761;
+  --muted: #78868f;
+
+  /* Brand & states */
+  --accent: #c2560f;
+  --accent-soft: #fbede4;
+  --pass: #1b7a4f;
+  --pass-soft: color-mix(in srgb, var(--pass) 10%, transparent);
+  --warn: #8a6508;
+  --warn-soft: color-mix(in srgb, var(--warn) 12%, transparent);
+  --block: #b23a2e;
+  --block-soft: color-mix(in srgb, var(--block) 10%, transparent);
+  --info: #1f6091;
+  --info-soft: color-mix(in srgb, var(--info) 10%, transparent);
+
+  /* On-state fills */
+  --on-accent: #ffffff;
+  --on-pass: #ffffff;
+  --on-block: #ffffff;
+
+  /* Overlay */
+  --overlay: color-mix(in srgb, var(--text) 45%, transparent);
+
+  /* Type */
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+  --text-2xs: 0.6875rem; /* 11px */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.5rem; /* 24px */
+  --text-2xl: 2rem; /* 32px */
+  --tracking-label: 0.08em;
+
+  /* Spacing (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  /* Radius */
+  --radius-control: 6px;
+  --radius-card: 10px;
+}
+
+:root[data-theme="light"] {
+  --bg: #f7f8f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f4;
+  --border: #e2e6e9;
+  --border-soft: #edf0f2;
+  --text: #0f1518;
+  --text-2: #4a5761;
+  --muted: #78868f;
+  --accent: #c2560f;
+  --accent-soft: #fbede4;
+  --pass: #1b7a4f;
+  --pass-soft: color-mix(in srgb, var(--pass) 10%, transparent);
+  --warn: #8a6508;
+  --warn-soft: color-mix(in srgb, var(--warn) 12%, transparent);
+  --block: #b23a2e;
+  --block-soft: color-mix(in srgb, var(--block) 10%, transparent);
+  --info: #1f6091;
+  --info-soft: color-mix(in srgb, var(--info) 10%, transparent);
+  --on-accent: #ffffff;
+  --on-pass: #ffffff;
+  --on-block: #ffffff;
+  --overlay: color-mix(in srgb, var(--text) 45%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c1116;
+    --surface: #131a21;
+    --surface-2: #0f161c;
+    --border: #232f39;
+    --border-soft: #1a242c;
+    --text: #e2e9ee;
+    --text-2: #9dacb6;
+    --muted: #74848e;
+    --accent: #f0743a;
+    --accent-soft: #2b1509;
+    --pass: #45b584;
+    --pass-soft: color-mix(in srgb, var(--pass) 14%, transparent);
+    --warn: #d6a62a;
+    --warn-soft: color-mix(in srgb, var(--warn) 14%, transparent);
+    --block: #e8695d;
+    --block-soft: color-mix(in srgb, var(--block) 14%, transparent);
+    --info: #58a5d8;
+    --info-soft: color-mix(in srgb, var(--info) 14%, transparent);
+    --on-accent: #0c1116;
+    --overlay: color-mix(in srgb, #000000 60%, transparent);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0c1116;
+  --surface: #131a21;
+  --surface-2: #0f161c;
+  --border: #232f39;
+  --border-soft: #1a242c;
+  --text: #e2e9ee;
+  --text-2: #9dacb6;
+  --muted: #74848e;
+  --accent: #f0743a;
+  --accent-soft: #2b1509;
+  --pass: #45b584;
+  --pass-soft: color-mix(in srgb, var(--pass) 14%, transparent);
+  --warn: #d6a62a;
+  --warn-soft: color-mix(in srgb, var(--warn) 14%, transparent);
+  --block: #e8695d;
+  --block-soft: color-mix(in srgb, var(--block) 14%, transparent);
+  --info: #58a5d8;
+  --info-soft: color-mix(in srgb, var(--info) 14%, transparent);
+  --on-accent: #0c1116;
+  --overlay: color-mix(in srgb, #000000 60%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-ok: 0;
+  }
+}

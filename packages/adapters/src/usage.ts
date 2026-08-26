@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@agentdeck/protocol";
+import type { AgentEvent } from "@purser-sh/protocol";
 
 export function optionalToken(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {

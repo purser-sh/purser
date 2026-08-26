@@ -11,8 +11,8 @@ import {
   utcMonthStart,
   type AppDatabase,
   type LedgerTotals,
-} from "@agentdeck/db";
-import { BUILTIN_CATALOG, catalogStale, countTokens, familyForProvider, priceFor } from "@agentdeck/pricing";
+} from "@purser-sh/db";
+import { BUILTIN_CATALOG, catalogStale, countTokens, priceFor } from "@purser-sh/pricing";
 import type {
   Budget,
   BudgetStatus,
@@ -21,7 +21,7 @@ import type {
   Session,
   SpendReportPayload,
   SpendUpdatePayload,
-} from "@agentdeck/protocol";
+} from "@purser-sh/protocol";
 import { getAdapter } from "./registry.ts";
 
 export type GateResult =
@@ -315,7 +315,7 @@ export function buildSpendReport(db: AppDatabase, query: GetSpendPayload, now = 
 }
 
 export function estimateRunSpend(db: AppDatabase, session: Session, text: string, now = new Date()) {
-  const counted = countTokens(text, familyForProvider(session.providerId));
+  const counted = countTokens(text, session.modelId);
   const costModel = costModelFor(session.providerId);
   const priced =
     costModel === "metered"

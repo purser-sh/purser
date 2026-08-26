@@ -1,12 +1,26 @@
-import type { FileContentPayload, FsEntry, PermissionMode } from "@agentdeck/protocol";
+import type { FileContentPayload, FsEntry, SpendReportPayload } from "@purser-sh/protocol";
 import { FileText, FolderSync, GitBranch, Link2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { PathDisclosure } from "@/components/PathDisclosure";
+import { RunMeter } from "@/components/RunMeter";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useRunner } from "@/lib/client";
-import { formatUsdMicros } from "@/lib/money";
-import { PERMISSION_MODES, selectedSession, selectedWorkspace, useDeckStore } from "@/lib/store";
+import { parseUsdToMicros } from "@/lib/money";
+import {
+  type RightPanelTab,
+  selectedSession,
+  selectedWorkspace,
+  useDeckStore,
+} from "@/lib/store";
+import { cn } from "@/lib/utils";
+
+const TABS: { id: RightPanelTab; label: string }[] = [
+  { id: "spend", label: "Spend" },
+  { id: "files", label: "Files" },
+  { id: "setup", label: "Setup" },
+];
 
 function relativeToWorkspace(root: string, abs: string): string {
   const prefix = root.endsWith("/") ? root : `${root}/`;
@@ -26,20 +40,33 @@ function parentPath(path: string): string | null {
   return path.split("/").slice(0, -1).join("/") || "/";
 }
 
+function reportRows(report: SpendReportPayload | undefined) {
+  if (report === undefined) {
+    return [];
+  }
+  return report.rows.map((row) => ({
+    key: row.groupKey,
+    tokens: row.inputTokens + row.outputTokens,
+    costUsdMicros: row.costUsdMicros,
+  }));
+}
+
 export function RightPanel(props: { onOpenWorkspace: () => void }) {
   const client = useRunner();
+  const tab = useDeckStore((state) => state.rightPanelTab);
+  const setTab = useDeckStore((state) => state.setRightPanelTab);
   const workspaces = useDeckStore((state) => state.workspaces);
   const sessions = useDeckStore((state) => state.sessions);
-  const runs = useDeckStore((state) => state.runs);
-  const providerConfigs = useDeckStore((state) => state.providerConfigs);
-  const modelsByProvider = useDeckStore((state) => state.modelsByProvider);
-  const costModelByProvider = useDeckStore((state) => state.costModelByProvider);
   const spendSummary = useDeckStore((state) => state.spendSummary);
-  const healthByProvider = useDeckStore((state) => state.healthByProvider);
+  const budgets = useDeckStore((state) => state.budgets);
+  const costModelByProvider = useDeckStore((state) => state.costModelByProvider);
+  const lastSpendBySession = useDeckStore((state) => state.lastSpendBySession);
   const folderWatches = useDeckStore((state) => state.folderWatches);
   const lastSyncEvent = useDeckStore((state) => state.lastSyncEvent);
-  const workspace = selectedWorkspace(workspaces, useDeckStore((state) => state.selectedWorkspaceId));
-  const session = selectedSession(sessions, useDeckStore((state) => state.selectedSessionId));
+  const selectedWorkspaceId = useDeckStore((state) => state.selectedWorkspaceId);
+  const selectedSessionId = useDeckStore((state) => state.selectedSessionId);
+  const workspace = selectedWorkspace(workspaces, selectedWorkspaceId);
+  const session = selectedSession(sessions, selectedSessionId);
   const [listingPath, setListingPath] = useState<string | null>(null);
   const [entries, setEntries] = useState<FsEntry[]>([]);
   const [preview, setPreview] = useState<FileContentPayload | null>(null);
@@ -48,6 +75,12 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
   const [bypassAck, setBypassAck] = useState(false);
   const [inboxPath, setInboxPath] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
+  const [providerReport, setProviderReport] = useState<SpendReportPayload | undefined>();
+  const [sessionReport, setSessionReport] = useState<SpendReportPayload | undefined>();
+  const [limitTokens, setLimitTokens] = useState("100000");
+  const [limitUsd, setLimitUsd] = useState("");
+  const [budgetAction, setBudgetAction] = useState<"warn" | "ask" | "hard_stop">("hard_stop");
+  const [budgetWindow, setBudgetWindow] = useState<"run" | "day" | "month">("day");
 
   useEffect(() => {
     setListingPath(workspace?.absPath ?? null);
@@ -66,28 +99,20 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
   }, [client, listingPath, lastSyncEvent]);
 
   useEffect(() => {
-    if (session === undefined) {
+    if (tab !== "spend") {
       return;
     }
-    void client.request("list_models", { providerId: session.providerId });
-    void client.request("check_provider_health", { providerId: session.providerId });
-  }, [client, session?.providerId, session]);
-
-  async function setMode(permissionMode: PermissionMode) {
-    if (session === undefined) {
-      return;
-    }
-    if (permissionMode === "bypass") {
-      setBypassOpen(true);
-      return;
-    }
-    await client.request("set_session_provider", {
-      sessionId: session.id,
-      providerId: session.providerId,
-      modelId: session.modelId ?? undefined,
-      permissionMode,
+    void client.request("get_spend", { scope: "global", window: "month", groupBy: "provider" }).then((message) => {
+      if (message.type === "spend_report") {
+        setProviderReport(message.payload);
+      }
     });
-  }
+    void client.request("get_spend", { scope: "global", window: "month", groupBy: "session" }).then((message) => {
+      if (message.type === "spend_report") {
+        setSessionReport(message.payload);
+      }
+    });
+  }, [client, tab, spendSummary.generatedAt]);
 
   async function openEntry(entry: FsEntry) {
     if (workspace === undefined) {
@@ -107,18 +132,17 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
     }
   }
 
-  const models = session ? (modelsByProvider[session.providerId] ?? []) : [];
-  const health = session ? healthByProvider[session.providerId] : undefined;
-  const activeRuns = runs.filter((run) => run.status === "running");
   const watches = folderWatches.filter((watch) => watch.workspaceId === workspace?.id);
   const listingParent =
     listingPath !== null && workspace !== undefined && listingPath !== workspace.absPath ? parentPath(listingPath) : null;
+  const spend = session ? lastSpendBySession[session.id] : undefined;
+  const costModel = session ? (costModelByProvider[session.providerId] ?? "local") : "local";
 
   if (session === undefined) {
     return (
-      <aside className="flex w-80 shrink-0 flex-col gap-3 border-l border-border bg-card/30 p-4">
-        <p className="text-sm text-muted-foreground">Open a folder to start a session, then pick a provider here.</p>
-        <Button onClick={props.onOpenWorkspace} type="button">
+      <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-card/30 p-4">
+        <p className="text-[length:var(--text-sm)] text-muted-foreground">Open a folder to start a session.</p>
+        <Button className="mt-3" onClick={props.onOpenWorkspace} type="button" variant="outline">
           Open a folder
         </Button>
       </aside>
@@ -126,262 +150,274 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
   }
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-card/30 p-4">
-      <section>
-        <h3 className="mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
-          <FolderSync className="h-3.5 w-3.5" />
-          Drop folder
-        </h3>
-        <p className="mb-2 text-[11px] text-muted-foreground">
-          Grant a folder such as <code className="font-mono">~/xyz</code>. New files copy into{" "}
-          <code className="font-mono">.inbox/</code>.
-        </p>
-        <Input
-          onChange={(event) => setInboxPath(event.target.value)}
-          placeholder="~/xyz"
-          value={inboxPath}
-        />
-        <Button
-          className="mt-2 w-full"
-          disabled={!(inboxPath.startsWith("/") || inboxPath === "~" || inboxPath.startsWith("~/"))}
-          onClick={() => {
-            if (workspace === undefined) return;
-            void client.request("watch_folder", { workspaceId: workspace.id, absPath: inboxPath });
-            setInboxPath("");
-          }}
-          size="sm"
-          type="button"
-        >
-          Watch this folder
-        </Button>
-        <div className="mt-2 space-y-1">
-          {watches.map((watch) => (
-            <div className="flex items-center justify-between gap-2 text-[11px]" key={`${watch.workspaceId}:${watch.absPath}`}>
-              <span className="truncate font-mono text-muted-foreground">{watch.absPath}</span>
-              <button
-                className="text-destructive"
-                onClick={() =>
-                  void client.request("unwatch_folder", { workspaceId: watch.workspaceId, absPath: watch.absPath })
-                }
+    <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-card/30">
+      <div className="flex border-b border-border">
+        {TABS.map((item) => (
+          <button
+            className={cn(
+              "flex-1 px-2 py-2 text-[length:var(--text-2xs)] label-caps transition-colors",
+              tab === item.id ? "border-b-2 border-accent-brand text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+            key={item.id}
+            onClick={() => setTab(item.id)}
+            type="button"
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        {tab === "spend" ? (
+          <div className="space-y-4">
+            <RunMeter
+              costModel={costModel}
+              providerRows={reportRows(providerReport)}
+              sessionRows={reportRows(sessionReport).map((row) => ({
+                ...row,
+                key: sessions.find((item) => item.id === row.key)?.title ?? row.key,
+              }))}
+              spend={spend}
+              spendSummary={spendSummary}
+              variant="full"
+            />
+            <section>
+              <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">Budgets</h3>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  className="rounded-[var(--radius-control)] border border-border bg-background px-2 py-1 text-[length:var(--text-xs)]"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "run" || value === "day" || value === "month") {
+                      setBudgetWindow(value);
+                    }
+                  }}
+                  value={budgetWindow}
+                >
+                  <option value="run">per run</option>
+                  <option value="day">per day</option>
+                  <option value="month">per month</option>
+                </select>
+                <select
+                  className="rounded-[var(--radius-control)] border border-border bg-background px-2 py-1 text-[length:var(--text-xs)]"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "warn" || value === "ask" || value === "hard_stop") {
+                      setBudgetAction(value);
+                    }
+                  }}
+                  value={budgetAction}
+                >
+                  <option value="warn">warn</option>
+                  <option value="ask">ask</option>
+                  <option value="hard_stop">hard stop</option>
+                </select>
+              </div>
+              <Input
+                className="mt-2"
+                onChange={(event) => setLimitTokens(event.target.value)}
+                placeholder="token limit"
+                value={limitTokens}
+              />
+              <Input
+                className="mt-2"
+                onChange={(event) => setLimitUsd(event.target.value)}
+                placeholder="USD limit (optional)"
+                value={limitUsd}
+              />
+              <Button
+                className="mt-2 w-full"
+                onClick={() => {
+                  const tokens = limitTokens.trim().length === 0 ? null : Number(limitTokens);
+                  const usd = parseUsdToMicros(limitUsd);
+                  if ((tokens === null || !Number.isFinite(tokens)) && usd === null) {
+                    return;
+                  }
+                  void client.request("set_budget", {
+                    scope: selectedWorkspaceId === null ? "global" : "workspace",
+                    scopeId: selectedWorkspaceId,
+                    window: budgetWindow,
+                    limitTokens: tokens !== null && Number.isFinite(tokens) ? Math.trunc(tokens) : null,
+                    limitUsdMicros: usd,
+                    action: budgetAction,
+                    enabled: true,
+                  });
+                }}
+                size="sm"
                 type="button"
+                variant="outline"
               >
-                stop
-              </button>
-            </div>
-          ))}
-        </div>
-        {lastSyncEvent !== null ? (
-          <p className="mt-1 text-[11px] text-emerald-400/90">
-            {lastSyncEvent.action} {lastSyncEvent.destPath}
-          </p>
+                Save budget
+              </Button>
+              <div className="mt-2 space-y-1">
+                {budgets.map((budget) => (
+                  <div
+                    className="flex items-center justify-between gap-2 text-[length:var(--text-xs)] text-muted-foreground"
+                    key={budget.id}
+                  >
+                    <span className="min-w-0 truncate">
+                      {budget.scope}/{budget.window} · {budget.action}
+                    </span>
+                    <button
+                      className="shrink-0 text-destructive"
+                      onClick={() => void client.request("delete_budget", { budgetId: budget.id })}
+                      type="button"
+                    >
+                      delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
         ) : null}
-      </section>
-      <section>
-        <h3 className="mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
-          <GitBranch className="h-3.5 w-3.5" />
-          GitHub / GitLab
-        </h3>
-        <p className="font-mono text-[11px] break-all text-muted-foreground">{workspace?.gitRemote ?? "no origin yet"}</p>
-        <Input
-          className="mt-2"
-          onChange={(event) => setRemoteUrl(event.target.value)}
-          placeholder="https://github.com/org/repo.git"
-          value={remoteUrl}
-        />
-        <Button
-          className="mt-2 w-full"
-          disabled={remoteUrl.length < 8}
-          onClick={() => {
-            if (workspace === undefined) return;
-            void client.request("link_repository", { workspaceId: workspace.id, remoteUrl });
-            setRemoteUrl("");
-          }}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          <Link2 className="h-3.5 w-3.5" />
-          Link origin
-        </Button>
-      </section>
-      <section>
-        <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Provider</h3>
-        <select
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          onChange={(event) => {
-            void client.request("set_session_provider", {
-              sessionId: session.id,
-              providerId: event.target.value,
-              permissionMode: session.permissionMode,
-            });
-          }}
-          value={session.providerId}
-        >
-          {providerConfigs.map((config) => (
-            <option key={config.id} value={config.providerId}>
-              {config.label}
-            </option>
-          ))}
-        </select>
-        <select
-          className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          onChange={(event) => {
-            void client.request("set_session_provider", {
-              sessionId: session.id,
-              providerId: session.providerId,
-              modelId: event.target.value,
-              permissionMode: session.permissionMode,
-            });
-          }}
-          value={session.modelId ?? models[0]?.id ?? ""}
-        >
-          {models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.label}
-            </option>
-          ))}
-        </select>
-        {health !== undefined ? (
-          <p className={`mt-2 text-xs ${health.ok ? "text-emerald-400" : "text-amber-400"}`}>{health.detail}</p>
-        ) : null}
-      </section>
-      <section>
-        <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Permission</h3>
-        <div className="flex flex-wrap gap-1">
-          {PERMISSION_MODES.map((mode) => (
-            <Button
-              key={mode.id}
-              onClick={() => void setMode(mode.id)}
-              size="sm"
-              type="button"
-              variant={session.permissionMode === mode.id ? "default" : "outline"}
-            >
-              {mode.label}
-            </Button>
-          ))}
-        </div>
-      </section>
-      <section>
-        <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Task board</h3>
-        <div className="space-y-1">
-          {runs
-            .slice(-8)
-            .reverse()
-            .map((run) => {
-              const owner = sessions.find((item) => item.id === run.sessionId);
-              return (
-                <div className="flex items-center justify-between rounded-md border border-border px-2 py-1 text-xs" key={run.id}>
-                  <span className="truncate">{owner?.title ?? run.sessionId}</span>
-                  <span className="flex items-center gap-2">
-                    <span className={run.status === "running" ? "text-amber-400" : "text-muted-foreground"}>{run.status}</span>
-                    {run.status === "running" ? (
-                      <button
-                        className="text-destructive"
-                        onClick={() => void client.request("cancel_run", { runId: run.id })}
-                        type="button"
-                      >
-                        cancel
-                      </button>
-                    ) : null}
-                  </span>
+
+        {tab === "files" ? (
+          <div className="space-y-4">
+            {watches.length > 0 ? (
+              <section>
+                <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">Drop folder inbox</h3>
+                <div className="space-y-1">
+                  {watches.map((watch) => (
+                    <PathDisclosure key={`${watch.workspaceId}:${watch.absPath}`} path={watch.absPath} />
+                  ))}
                 </div>
-              );
-            })}
-          {runs.length === 0 ? <p className="text-xs text-muted-foreground">No runs yet.</p> : null}
-        </div>
-        {activeRuns.length > 1 ? (
-          <p className="mt-1 text-[11px] text-muted-foreground">{activeRuns.length} sessions running in parallel.</p>
+                {lastSyncEvent !== null ? (
+                  <p className="mt-2 text-[length:var(--text-2xs)] text-pass">
+                    {lastSyncEvent.action} {lastSyncEvent.destPath}
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
+            <section>
+              <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">File tree</h3>
+              <p className="mb-1 font-mono text-[length:var(--text-2xs)] text-muted-foreground">
+                {listingPath !== null && workspace !== undefined
+                  ? relativeToWorkspace(workspace.absPath, listingPath) || "."
+                  : ""}
+              </p>
+              <div className="space-y-0.5">
+                {listingParent !== null ? (
+                  <button
+                    className="block w-full truncate text-left font-mono text-[length:var(--text-xs)] text-muted-foreground hover:text-foreground"
+                    onClick={() => setListingPath(listingParent)}
+                    type="button"
+                  >
+                    ..
+                  </button>
+                ) : null}
+                {entries.map((entry) => (
+                  <button
+                    className="flex w-full items-center gap-1 truncate text-left font-mono text-[length:var(--text-xs)] text-muted-foreground hover:text-foreground"
+                    key={entry.path}
+                    onClick={() => void openEntry(entry)}
+                    type="button"
+                  >
+                    {entry.kind === "dir" ? <span>▸</span> : <FileText className="h-3 w-3 shrink-0" />}
+                    {entry.name}
+                  </button>
+                ))}
+                {entries.length === 0 ? (
+                  <p className="text-[length:var(--text-xs)] text-muted-foreground">No entries.</p>
+                ) : null}
+              </div>
+            </section>
+          </div>
         ) : null}
-      </section>
-      <section>
-        <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Usage</h3>
-        <p className="text-sm">
-          {session.tokensIn} in / {session.tokensOut} out
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {costModelByProvider[session.providerId] ?? "unknown"} · observed tokens, not an invoice. Dollars only appear
-          for metered APIs we can price — never a fabricated $0.00.
-        </p>
-      </section>
-      <section>
-        <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Spend</h3>
-        <p className="text-sm">
-          Today {spendSummary.today.tokens} tok
-          {spendSummary.today.costUsdMicros !== null ? ` · ${formatUsdMicros(spendSummary.today.costUsdMicros)}` : " · —"}
-        </p>
-        <p className="text-sm">
-          Month {spendSummary.month.tokens} tok
-          {spendSummary.month.costUsdMicros !== null ? ` · ${formatUsdMicros(spendSummary.month.costUsdMicros)}` : " · —"}
-        </p>
-        {spendSummary.catalogStale ? (
-          <p className="mt-1 text-xs text-amber-300">Pricing catalog asOf is older than 90 days. Check packages/pricing.</p>
+
+        {tab === "setup" ? (
+          <div className="space-y-4">
+            <section>
+              <h3 className="mb-2 flex items-center gap-1.5 text-[length:var(--text-2xs)] label-caps text-muted-foreground">
+                <FolderSync className="h-3.5 w-3.5" />
+                Drop folder
+              </h3>
+              <Input onChange={(event) => setInboxPath(event.target.value)} placeholder="~/xyz" value={inboxPath} />
+              <Button
+                className="mt-2 w-full"
+                disabled={!(inboxPath.startsWith("/") || inboxPath === "~" || inboxPath.startsWith("~/"))}
+                onClick={() => {
+                  if (workspace === undefined) return;
+                  void client.request("watch_folder", { workspaceId: workspace.id, absPath: inboxPath });
+                  setInboxPath("");
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Watch this folder
+              </Button>
+            </section>
+            <section>
+              <h3 className="mb-2 flex items-center gap-1.5 text-[length:var(--text-2xs)] label-caps text-muted-foreground">
+                <GitBranch className="h-3.5 w-3.5" />
+                Git origin
+              </h3>
+              <p className="mb-2 text-[length:var(--text-2xs)] text-muted-foreground">
+                {workspace?.gitRemote ?? "No origin linked"}
+              </p>
+              <Input
+                onChange={(event) => setRemoteUrl(event.target.value)}
+                placeholder="https://github.com/org/repo.git"
+                value={remoteUrl}
+              />
+              <Button
+                className="mt-2 w-full"
+                disabled={remoteUrl.length < 8}
+                onClick={() => {
+                  if (workspace === undefined) return;
+                  void client.request("link_repository", { workspaceId: workspace.id, remoteUrl });
+                  setRemoteUrl("");
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Link origin
+              </Button>
+            </section>
+            <section>
+              <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">Workspace</h3>
+              {workspace ? <PathDisclosure path={workspace.absPath} /> : null}
+              {session.worktreePath ? (
+                <div className="mt-2">
+                  <PathDisclosure label="worktree" path={session.worktreePath} />
+                </div>
+              ) : null}
+            </section>
+            <section>
+              <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">Bypass</h3>
+              <p className="mb-2 text-[length:var(--text-xs)] text-muted-foreground">
+                Turn on bypass from the top bar, or use the button below.
+              </p>
+              <Button onClick={() => setBypassOpen(true)} size="sm" type="button" variant="outline">
+                Enable bypass...
+              </Button>
+            </section>
+          </div>
         ) : null}
-        {spendSummary.unpricedModels.length > 0 ? (
-          <p className="mt-1 text-[11px] text-muted-foreground">Unpriced: {spendSummary.unpricedModels.join(", ")}</p>
-        ) : null}
-        <div className="mt-2 space-y-1">
-          {spendSummary.byWorkspace.map((row) => (
-            <p className="text-[11px] text-muted-foreground" key={row.workspaceId}>
-              {workspaces.find((item) => item.id === row.workspaceId)?.name ?? row.workspaceId}: {row.today.tokens} today /{" "}
-              {row.month.tokens} month
-            </p>
-          ))}
-        </div>
-      </section>
-      <section>
-        <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Workspace</h3>
-        <p className="font-mono text-[11px] break-all text-muted-foreground">{workspace?.absPath ?? "—"}</p>
-        {session.worktreePath ? (
-          <p className="mt-1 font-mono text-[11px] break-all text-muted-foreground">worktree: {session.worktreePath}</p>
-        ) : null}
-      </section>
-      <section className="min-h-0 flex-1">
-        <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Files</h3>
-        <p className="mb-1 truncate font-mono text-[10px] text-muted-foreground">
-          {listingPath !== null && workspace !== undefined ? relativeToWorkspace(workspace.absPath, listingPath) || "." : ""}
-        </p>
-        <div className="space-y-0.5">
-          {listingParent !== null ? (
-            <button
-              className="block w-full truncate text-left font-mono text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setListingPath(listingParent)}
-              type="button"
-            >
-              ..
-            </button>
-          ) : null}
-          {entries.map((entry) => (
-            <button
-              className="flex w-full items-center gap-1 truncate text-left font-mono text-xs text-muted-foreground hover:text-foreground"
-              key={entry.path}
-              onClick={() => void openEntry(entry)}
-              type="button"
-            >
-              {entry.kind === "dir" ? <span>▸</span> : <FileText className="h-3 w-3 shrink-0" />}
-              {entry.name}
-            </button>
-          ))}
-        </div>
-      </section>
+      </div>
+
       <Dialog className="max-w-3xl" onClose={() => setPreview(null)} open={preview !== null} title={preview?.path ?? "File"}>
         {preview !== null ? (
           preview.encoding === "base64" ? (
-            <p className="text-sm text-muted-foreground">Binary file — not previewed here.</p>
+            <p className="text-[length:var(--text-sm)] text-muted-foreground">Binary file. Can't preview it here.</p>
           ) : (
-            <pre className="max-h-[70vh] overflow-auto rounded-md border border-border bg-black/40 p-3 text-[12px] leading-5">
+            <pre className="max-h-[70vh] overflow-auto rounded-[var(--radius-control)] border border-border bg-surface-2 p-3 font-mono text-[length:var(--text-xs)] leading-5">
               {preview.content}
-              {preview.truncated ? "\n\n… truncated" : ""}
+              {preview.truncated ? "\n\n(truncated)" : ""}
             </pre>
           )
         ) : null}
       </Dialog>
+
       <Dialog onClose={() => setBypassOpen(false)} open={bypassOpen} title="Enable bypass for this session?">
-        <p className="mb-3 text-sm text-muted-foreground">
-          Re-confirm for this session only. Bypass expires after 30 minutes or 10 runs, whichever comes first. Type
-          bypass and check the box.
+        <p className="mb-3 text-[length:var(--text-sm)] text-muted-foreground">
+          Re-confirm for this session only. Bypass expires after 30 minutes or 10 runs. Type bypass and check the box.
         </p>
         <Input onChange={(event) => setBypassText(event.target.value)} value={bypassText} />
-        <label className="mt-3 flex items-start gap-2 text-xs text-muted-foreground">
+        <label className="mt-3 flex items-start gap-2 text-[length:var(--text-xs)] text-muted-foreground">
           <input checked={bypassAck} onChange={(event) => setBypassAck(event.target.checked)} type="checkbox" />
           I understand tools will run without asking until expiry, for this session only.
         </label>

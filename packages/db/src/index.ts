@@ -4,7 +4,7 @@ export { postgresSchema } from "./schema.postgres.ts";
 export * as sqlite from "./schema.sqlite.ts";
 export * as postgres from "./schema.postgres.ts";
 export { newId } from "./ids.ts";
-export { toIso, expandHome, resolveSqliteFilePath, defaultSqlitePath, agentdeckHome } from "./paths.ts";
+export { toIso, expandHome, resolveSqliteFilePath, defaultSqlitePath, purserHome } from "./paths.ts";
 export { openSqliteDatabase, migrationsFolder, type AppDatabase } from "./client.ts";
 export {
   seedDefaults,

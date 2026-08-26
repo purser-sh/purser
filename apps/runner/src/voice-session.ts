@@ -1,5 +1,5 @@
-import { EnergyVad, transcribePcm, OpenAiTts, type Pcm16Chunk } from "@agentdeck/voice";
-import type { VoiceInputMode, VoiceProfile } from "@agentdeck/protocol";
+import { EnergyVad, transcribePcm, OpenAiTts, type Pcm16Chunk } from "@purser-sh/voice";
+import type { VoiceInputMode, VoiceProfile } from "@purser-sh/protocol";
 import { getSecret } from "./secrets.ts";
 
 function concatPcm(chunks: Int16Array[]): Int16Array {

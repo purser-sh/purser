@@ -31,9 +31,9 @@ export function resolveSqliteFilePath(url: string): string {
 }
 
 export function defaultSqlitePath(): string {
-  return resolveSqliteFilePath("sqlite://~/.agentdeck/agentdeck.sqlite");
+  return resolveSqliteFilePath("sqlite://~/.purser/purser.sqlite");
 }
 
-export function agentdeckHome(): string {
-  return expandHome("~/.agentdeck");
+export function purserHome(): string {
+  return expandHome("~/.purser");
 }

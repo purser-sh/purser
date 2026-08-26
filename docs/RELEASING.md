@@ -1,6 +1,6 @@
-# Releasing AgentDeck
+# Releasing Purser
 
-Companion binaries are `bun build --compile` outputs with the Vite UI embedded (`--asset ./ui`). First run creates `~/.agentdeck/config.json` (mode `0600`), serves the UI from the runner port, injects the token into HTML at request time, and opens the browser. **The token is never printed.**
+Companion binaries are `bun build --compile` outputs with the Vite UI **imported as generated TypeScript** (`apps/runner/src/embedded-ui.gen.ts`). Bun 1.3.14 has no `--asset` directory flag; the compile script writes the module, compiles, then restores the empty stub. First run creates `~/.purser/config.json` (mode `0600`), serves the UI from the runner port, injects the token into HTML at request time, and opens the browser. **The token is never printed.**
 
 ## Local compile (current platform)
 
@@ -8,7 +8,7 @@ Companion binaries are `bun build --compile` outputs with the Vite UI embedded (
 bun run compile
 ```
 
-Writes `dist/bin/agentdeck-<os>-<arch>` and `dist/bin/SHA256SUMS`. Cross-compile every Phase 5 target:
+Writes `dist/bin/purser-<os>-<arch>` and `dist/bin/SHA256SUMS`. Cross-compile every Phase 5 target:
 
 ```bash
 bun run compile:all
@@ -16,14 +16,14 @@ bun run compile:all
 
 Targets: `bun-darwin-arm64`, `bun-darwin-x64`, `bun-linux-x64`, `bun-windows-x64`.
 
-`apps/runner/ui` is a staged copy of `apps/web/dist` and is gitignored. The compile script rebuilds it.
+`apps/runner/ui` is a staged copy of `apps/web/dist` and is gitignored. The compile script rebuilds it and temporarily fills `embedded-ui.gen.ts` (the committed file stays an empty stub).
 
 ## What the binary does
 
-- Serves `/` and `/phone` from the embedded UI. `/__agentdeck/config` is **404** (the Vite dev route is closed in the package).
+- Serves `/` and `/phone` from the embedded UI. `/__purser/config` is **404** (the Vite dev route is closed in the package).
 - HTML is Host-allowlisted. Document navigations may omit `Origin` but must send `Sec-Fetch-Site: none|same-origin|same-site`. curl without those headers does not receive the injected token.
-- `agentdeck audit verify` checks `~/.agentdeck/audit.jsonl`.
-- `AGENTDECK_NO_BROWSER=1` skips opening the browser.
+- `purser audit verify` checks `~/.purser/audit.jsonl`.
+- `PURSER_NO_BROWSER=1` skips opening the browser.
 
 ## GitHub Actions
 
@@ -56,16 +56,16 @@ There is no Apple Team ID or Authenticode certificate in this repository. Until 
 ## install.sh and Homebrew
 
 ```bash
-AGENTDECK_REPO=owner/name AGENTDECK_VERSION=v0.0.1 sh install.sh
+PURSER_REPO=owner/name PURSER_VERSION=v0.0.1 sh install.sh
 ```
 
-Verifies `SHA256SUMS` then installs `agentdeck` into `$AGENTDECK_PREFIX/bin` (default `/usr/local`).
+Verifies `SHA256SUMS` then installs `purser` into `$PURSER_PREFIX/bin` (default `/usr/local`).
 
-`Formula/agentdeck.rb` is a tap template. Its `sha256` values are zeros until the first real release; `brew install` will fail checksum until a human (or the release job) replaces them. There is no public Homebrew tap yet.
+`Formula/purser.rb` is a tap template. Its `sha256` values are zeros until the first real release; `brew install` will fail checksum until a human (or the release job) replaces them. There is no public Homebrew tap yet.
 
 ## Honest gaps
 
 - linux-arm64 is not a Phase 5 target.
 - `[::1]` is still not on the default Host allowlist.
 - Cross-compiled darwin binaries are unsigned unless the macOS signing job ran with secrets.
-- `install.sh` needs `AGENTDECK_REPO`; this clone may not have a GitHub remote yet.
+- `install.sh` needs `PURSER_REPO`; this clone may not have a GitHub remote yet.

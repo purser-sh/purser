@@ -3,7 +3,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { PhoneApp } from "./PhoneApp";
+import { initTheme } from "./lib/theme";
 import "./index.css";
+
+initTheme();
 
 const queryClient = new QueryClient();
 const root = document.getElementById("root");

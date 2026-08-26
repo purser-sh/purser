@@ -1,8 +1,8 @@
-import { openSqliteDatabase } from "@agentdeck/db";
+import { openSqliteDatabase } from "@purser-sh/db";
 import { printVerify, verifyAudit } from "./audit.ts";
-import { agentdeckDir, configPath, loadOrCreateConfig } from "./config.ts";
+import { purserDir, configPath, loadOrCreateConfig } from "./config.ts";
 import { startServer, type AppContext } from "./server.ts";
-import { resolveUiDir } from "./ui-serve.ts";
+import { hasEmbeddedUi, resolveUiDir } from "./ui-serve.ts";
 
 function userArgv(): string[] {
   const standalone = typeof Bun !== "undefined" && Bun.isStandaloneExecutable === true;
@@ -28,19 +28,19 @@ async function openBrowser(url: string): Promise<void> {
 
 const args = userArgv();
 if (args[0] === "--help" || args[0] === "-h") {
-  console.log("AgentDeck companion");
+  console.log("Purser companion");
   console.log("  (no args)       start the runner, serve the UI, never print the token");
-  console.log("  audit verify    verify ~/.agentdeck/audit.jsonl");
+  console.log("  audit verify    verify ~/.purser/audit.jsonl");
   process.exit(0);
 }
 if (args[0] === "audit" && args[1] === "verify") {
-  const result = verifyAudit(agentdeckDir());
+  const result = verifyAudit(purserDir());
   console.log(printVerify(result));
   process.exit(result.ok ? 0 : 1);
 }
 
 const config = loadOrCreateConfig();
-const db = openSqliteDatabase(process.env.AGENTDECK_DATABASE_URL);
+const db = openSqliteDatabase(process.env.PURSER_DATABASE_URL);
 
 const ctx: AppContext = {
   config,
@@ -58,15 +58,15 @@ const ctx: AppContext = {
 const { port } = await startServer(ctx);
 const uiUrl = `http://127.0.0.1:${port}/`;
 
-console.log(`AgentDeck runner listening on ws://127.0.0.1:${port}`);
+console.log(`Purser runner listening on ws://127.0.0.1:${port}`);
 console.log(`Health check: http://127.0.0.1:${port}/health`);
 console.log(`Config: ${configPath()}`);
-if (ctx.uiDir !== undefined) {
+if (ctx.uiDir !== undefined || hasEmbeddedUi()) {
   console.log(`UI: ${uiUrl}`);
 }
 console.log("Token is stored in the config file (not printed).");
 
 const packaged = typeof Bun !== "undefined" && Bun.isStandaloneExecutable === true;
-if (packaged && process.env.AGENTDECK_NO_BROWSER !== "1") {
+if (packaged && process.env.PURSER_NO_BROWSER !== "1" && (ctx.uiDir !== undefined || hasEmbeddedUi())) {
   await openBrowser(uiUrl);
 }

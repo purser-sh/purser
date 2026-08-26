@@ -14,8 +14,8 @@ const NOW = "2026-08-22T15:43:00.000Z";
 
 const workspace = {
   id: "ws_1",
-  name: "AgentDeck",
-  absPath: "/home/aksingh/AgentDeck",
+  name: "Purser",
+  absPath: process.cwd(),
   gitRemote: null,
   createdAt: NOW,
 };
@@ -80,7 +80,7 @@ const clientMessages: ClientMessage[] = [
   {
     id: "c3",
     type: "create_workspace",
-    payload: { name: "AgentDeck", absPath: "/home/aksingh/AgentDeck" },
+    payload: { name: "Purser", absPath: process.cwd() },
   },
   { id: "c4", type: "delete_workspace", payload: { workspaceId: "ws_1" } },
   { id: "c5", type: "browse_fs", payload: { path: "/home/aksingh" } },
@@ -295,7 +295,7 @@ const serverMessages: ServerMessage[] = [
     type: "fs_listing",
     payload: {
       path: "/home/aksingh",
-      entries: [{ name: "AgentDeck", path: "/home/aksingh/AgentDeck", kind: "dir" }],
+      entries: [{ name: "Purser", path: process.cwd(), kind: "dir" }],
     },
   },
   {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   insertRun,
@@ -8,14 +9,14 @@ import {
   listLedgerByRun,
   openSqliteDatabase,
   seedDefaults,
-} from "@agentdeck/db";
-import { tokensToUsdMicros } from "@agentdeck/pricing";
+} from "@purser-sh/db";
+import { tokensToUsdMicros } from "@purser-sh/pricing";
 import { finalizeRunLedger, recordUsageEvent } from "./meter.ts";
 import { executeRun } from "./session-run.ts";
 
 function openHomeDb() {
-  const home = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-meter-"));
-  process.env.AGENTDECK_HOME = home;
+  const home = mkdtempSync(join(tmpdir(), ".tmp-meter-"));
+  process.env.PURSER_HOME = home;
   return { db: openSqliteDatabase(":memory:"), home };
 }
 
@@ -51,8 +52,8 @@ describe("meter", () => {
     const { db } = openHomeDb();
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
-      name: "AgentDeck",
-      absPath: "/home/aksingh/AgentDeck",
+      name: "Purser",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {
@@ -79,8 +80,8 @@ describe("meter", () => {
     const { db } = openHomeDb();
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
-      name: "AgentDeck",
-      absPath: "/home/aksingh/AgentDeck",
+      name: "Purser",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {
@@ -103,8 +104,8 @@ describe("meter", () => {
     const { db } = openHomeDb();
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
-      name: "AgentDeck",
-      absPath: "/home/aksingh/AgentDeck",
+      name: "Purser",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {
@@ -125,7 +126,7 @@ describe("meter", () => {
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
       name: "ws",
-      absPath: "/home/aksingh/AgentDeck",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {
@@ -158,7 +159,7 @@ describe("meter", () => {
     await seedDefaults(db);
     const workspace = insertWorkspace(db, {
       name: "ws",
-      absPath: "/home/aksingh/AgentDeck",
+      absPath: process.cwd(),
       gitRemote: null,
     });
     const session = insertSession(db, {

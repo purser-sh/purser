@@ -4,12 +4,12 @@ Cursor and VS Code are **clients**. They must not spawn agents themselves.
 
 ## Contract
 
-1. Read `~/.agentdeck/config.json` for `token` and `port`.
+1. Read `~/.purser/config.json` for `token` and `port`.
 2. Connect `ws://127.0.0.1:<port>`.
 3. Send `hello` with the same protocol as the web console.
 4. On send, include the active file and selection as extra context in `send_message` text, or a future `editor_context` frame.
 
-Shared types live in `@agentdeck/integrations` (`IdeHost`, `IdeBridgeHello`).
+Shared types live in `@purser-sh/integrations` (`IdeHost`, `IdeBridgeHello`).
 
 ## Why not two products
 

@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { agentdeckDir } from "./config.ts";
+import { purserDir } from "./config.ts";
 
 export const ZERO_HASH = "0".repeat(64);
 export const AUDIT_ROTATE_BYTES = 64 * 1024 * 1024;
@@ -102,7 +102,7 @@ export type AppendAuditOptions = {
 };
 
 export function logAudit(event: AuditEvent, options: AppendAuditOptions = {}): ChainedAuditEvent {
-  return appendAudit(agentdeckDir(), event, options);
+  return appendAudit(purserDir(), event, options);
 }
 
 export function appendAudit(home: string, event: AuditEvent, options: AppendAuditOptions = {}): ChainedAuditEvent {

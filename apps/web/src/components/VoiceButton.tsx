@@ -81,7 +81,7 @@ export function VoiceButton(props: { compact?: boolean }) {
         }
       }}
       size={props.compact ? "icon" : "sm"}
-      title="Talk to the agent. Local commands: stop, cancel, repeat, approve, reject."
+      title="Hold to talk. Say stop, cancel, approve, or reject."
       type="button"
       variant={voiceActive ? "destructive" : "outline"}
     >

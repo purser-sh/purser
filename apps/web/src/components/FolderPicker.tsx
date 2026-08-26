@@ -1,4 +1,4 @@
-import type { FsEntry } from "@agentdeck/protocol";
+import type { FsEntry } from "@purser-sh/protocol";
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -72,7 +72,7 @@ export function FolderPicker(props: { open: boolean; onClose: () => void }) {
   return (
     <Dialog onClose={props.onClose} open={props.open} title="Open a folder">
       <p className="mb-2 text-sm text-muted-foreground">
-        Pick a project directory. AgentDeck will create a session so you can chat right away.
+        Pick a project folder. Purser opens a session so you can start right away.
       </p>
       <form className="mb-2" onSubmit={onPathSubmit}>
         <Input onChange={(event) => setDraft(event.target.value)} onKeyDown={onPathKeyDown} value={draft} />
@@ -107,7 +107,7 @@ export function FolderPicker(props: { open: boolean; onClose: () => void }) {
           Cancel
         </Button>
         <Button disabled={busy} onClick={() => void useFolder()} type="button">
-          {busy ? "Opening…" : "Use this folder"}
+          {busy ? "Opening..." : "Use this folder"}
         </Button>
       </div>
     </Dialog>

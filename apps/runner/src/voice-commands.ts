@@ -1,11 +1,11 @@
-import type { VoiceProfile } from "@agentdeck/protocol";
+import type { VoiceProfile } from "@purser-sh/protocol";
 import {
   getSession,
   insertSession,
   listRunningRuns,
   loadState,
   type AppDatabase,
-} from "@agentdeck/db";
+} from "@purser-sh/db";
 
 export type LocalCommand =
   | { kind: "stop" }

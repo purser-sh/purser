@@ -1,6 +1,6 @@
-import { canonicalizePairingCode } from "./pairing.ts";
+import { canonicalizePairingCode } from "./pairing-code.ts";
 
-const HKDF_SALT = new TextEncoder().encode("agentdeck-relay-v1");
+const HKDF_SALT = new TextEncoder().encode("purser-relay-v1");
 const HKDF_INFO = new TextEncoder().encode("frame-aes-256-gcm");
 
 export type SealedFrame = {

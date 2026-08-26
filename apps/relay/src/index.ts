@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import { PairingDesk, type PairRole } from "@agentdeck/integrations";
+import { PairingDesk, type PairRole } from "@purser-sh/integrations";
 
 type Room = {
   runner?: WebSocket;
@@ -50,7 +50,7 @@ function drop(ws: WebSocket): void {
 export function startRelay(host: string, port: number): ReturnType<typeof createServer> {
   const httpServer = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true, service: "agentdeck-relay" }));
+    res.end(JSON.stringify({ ok: true, service: "purser-relay" }));
   });
 
   const wss = new WebSocketServer({ server: httpServer });
@@ -114,11 +114,11 @@ export function startRelay(host: string, port: number): ReturnType<typeof create
   return httpServer;
 }
 
-const PORT = Number(process.env.AGENTDECK_RELAY_PORT ?? 7430);
-const HOST = process.env.AGENTDECK_RELAY_HOST ?? "127.0.0.1";
+const PORT = Number(process.env.PURSER_RELAY_PORT ?? 7430);
+const HOST = process.env.PURSER_RELAY_HOST ?? "127.0.0.1";
 
 if (import.meta.main) {
   startRelay(HOST, PORT);
-  console.log(`AgentDeck relay on ws://${HOST}:${PORT}`);
+  console.log(`Purser relay on ws://${HOST}:${PORT}`);
   console.log("Forwards frames; does not store them. After pairing, phone and companion seal payloads with HKDF(code) so the relay carries ciphertext.");
 }

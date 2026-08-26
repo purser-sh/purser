@@ -1,17 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createSessionWorktree, keepPath, removeSessionWorktree, revertPath } from "./worktree.ts";
 
 describe("session worktree", () => {
   test("creates a worktree for a git repo and reverts a file", () => {
-    const home = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-home-wt-"));
-    process.env.AGENTDECK_HOME = home;
-    const repo = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-git-"));
+    const home = mkdtempSync(join(tmpdir(), ".tmp-home-wt-"));
+    process.env.PURSER_HOME = home;
+    const repo = mkdtempSync(join(tmpdir(), ".tmp-git-"));
     spawnSync("git", ["-C", repo, "init"], { encoding: "utf8" });
-    spawnSync("git", ["-C", repo, "config", "user.email", "test@agentdeck.local"], { encoding: "utf8" });
-    spawnSync("git", ["-C", repo, "config", "user.name", "AgentDeck"], { encoding: "utf8" });
+    spawnSync("git", ["-C", repo, "config", "user.email", "test@purser.local"], { encoding: "utf8" });
+    spawnSync("git", ["-C", repo, "config", "user.name", "Purser"], { encoding: "utf8" });
     writeFileSync(join(repo, "README.md"), "one\n");
     spawnSync("git", ["-C", repo, "add", "."], { encoding: "utf8" });
     spawnSync("git", ["-C", repo, "commit", "-m", "init"], { encoding: "utf8" });
@@ -27,7 +28,7 @@ describe("session worktree", () => {
   });
 
   test("returns null for a non-git folder", () => {
-    const dir = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-nogit-"));
+    const dir = mkdtempSync(join(tmpdir(), ".tmp-nogit-"));
     mkdirSync(join(dir, "src"));
     expect(createSessionWorktree(dir, "ses_none")).toBeNull();
   });

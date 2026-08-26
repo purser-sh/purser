@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -23,20 +23,20 @@ export const RunnerConfigSchema = z
 
 export type RunnerConfig = z.infer<typeof RunnerConfigSchema>;
 
-export function agentdeckDir(): string {
-  const override = process.env.AGENTDECK_HOME;
+export function purserDir(): string {
+  const override = process.env.PURSER_HOME;
   if (override !== undefined && override.length > 0) {
     return override;
   }
-  return join(homedir(), ".agentdeck");
+  return join(homedir(), ".purser");
 }
 
 export function configPath(): string {
-  return join(agentdeckDir(), "config.json");
+  return join(purserDir(), "config.json");
 }
 
 export function logsDir(): string {
-  return join(agentdeckDir(), "logs");
+  return join(purserDir(), "logs");
 }
 
 export function resolvedOrigins(config: RunnerConfig, boundPort?: number): string[] {
@@ -58,8 +58,26 @@ function generateToken(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+// TODO(remove-before-v0.1.0): one-time dev migration from the AgentDeck name.
+export function migrateLegacyHomeDir(): void {
+  const legacy = join(homedir(), ".agentdeck");
+  const next = purserDir();
+  if (existsSync(next) || !existsSync(legacy)) {
+    return;
+  }
+  cpSync(legacy, next, { recursive: true });
+  for (const rel of ["config.json", "secrets.json", "audit.jsonl"]) {
+    const path = join(next, rel);
+    if (existsSync(path)) {
+      chmodSync(path, 0o600);
+    }
+  }
+  console.info("migrated ~/.agentdeck → ~/.purser");
+}
+
 export function loadOrCreateConfig(): RunnerConfig {
-  mkdirSync(agentdeckDir(), { recursive: true, mode: 0o700 });
+  migrateLegacyHomeDir();
+  mkdirSync(purserDir(), { recursive: true, mode: 0o700 });
   mkdirSync(logsDir(), { recursive: true, mode: 0o700 });
 
   const path = configPath();

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertAllowed, isInsideRoot, PathError, resolveInsideWorkspace } from "./paths.ts";
 
-const root = join(tmpdir(), `agentdeck-path-${crypto.randomUUID()}`);
+const root = join(tmpdir(), `purser-path-${crypto.randomUUID()}`);
 mkdirSync(join(root, "ws", "src"), { recursive: true });
 writeFileSync(join(root, "ws", "src", "app.ts"), "export {}\n");
 writeFileSync(join(root, "secret.txt"), "nope\n");

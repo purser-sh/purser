@@ -1,5 +1,5 @@
 {
-  "name": "agentdeck",
+  "name": "purser",
   "private": true,
   "type": "module",
   "workspaces": ["apps/*", "packages/*"],

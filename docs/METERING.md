@@ -1,25 +1,26 @@
 # Metering
 
-What AgentDeck can observe, price, and persist. Unpriced is stored as SQL `NULL`, never `$0.00`.
+What Purser can observe, price, and persist. Unpriced is stored as SQL `NULL`, never `$0.00`.
 
-Catalog rows live in `packages/pricing` and are copied from official pages with an `asOf` date. Override any row with `~/.agentdeck/pricing.json` (array of catalog rows, or `{ "rows": [...] }`). User rows deep-merge onto the builtin catalog.
+Catalog rows live in `packages/pricing` and are copied from official pages with an `asOf` date. Override any row with `~/.purser/pricing.json` (array of catalog rows, or `{ "rows": [...] }`). User rows deep-merge onto the builtin catalog.
 
 ## Prompt token counts (composer / coach)
 
 Composer estimates use `TokenCount`: `{ value, source: "exact" | "approximate", tokenizer, providerFamily }`.
-`exact` only when the tokenizer’s family matches the provider’s family. Approximate counts render as `≈ N` with a tooltip naming the tokenizer. This is **not** the agent loop and **not** the ledger.
+Family is resolved from the **selected model id**, not the adapter. `exact` requires a positive match between the tokenizer and that family (plus a known OpenAI encoding when family is `openai`). **Unknown defaults to approximate.** Approximate counts render as `≈ N` with a tooltip. This is **not** the agent loop and **not** the ledger.
 
-| Adapter | Provider family | Tokenizer used for coach | Coach count |
+OpenAI-compatible wire format ≠ OpenAI BPE. Hosts like Grok, Perplexity, and Ollama may return OpenAI-shaped `usage` JSON but use different tokenizers.
+
+| Example model id | Resolved family | Tokenizer used | Coach count |
 | --- | --- | --- | --- |
-| `echo` | openai | `gpt-tokenizer` | exact |
-| `grok` | openai | `gpt-tokenizer` | exact |
-| `perplexity` | openai | `gpt-tokenizer` | exact |
-| `generic_llm` | openai | `gpt-tokenizer` | exact |
-| `ollama` | openai | `gpt-tokenizer` | exact |
-| `codex` | openai | `gpt-tokenizer` | exact |
-| `claude_code` | anthropic | `@anthropic-ai/tokenizer` | exact (family match; Anthropic’s package itself is rough for Claude 3+ — prefer provider `usage` for bills) |
-| `gemini_cli` | google | `gpt-tokenizer` (no Google tokenizer in-tree) | **approximate** |
-| `cursor_agent` | unknown | `gpt-tokenizer` | **approximate** |
+| `gpt-5`, `o3`, `o4-mini` (Codex) | openai | `gpt-tokenizer/o200k_base` | **exact** |
+| `gpt-4`, `gpt-3.5-turbo` | openai | `gpt-tokenizer/cl100k_base` | **exact** |
+| `gpt-4o`, `o1`, `o3-mini` | openai | `gpt-tokenizer/model/…` or `o200k_base` | **exact** |
+| `sonnet`, `opus`, `haiku`, `claude-*` | anthropic | `@anthropic-ai/tokenizer` | **exact** (package is rough for Claude 3+ — prefer provider `usage` for bills) |
+| `gemini-*` | google | `gpt-tokenizer/cl100k_base` (no Google tokenizer in-tree) | **approximate** |
+| `grok-*` | unknown | `gpt-tokenizer/cl100k_base` | **approximate** |
+| `sonar*`, `llama*`, `mistral*`, … | unknown | `gpt-tokenizer/cl100k_base` | **approximate** |
+| `auto`, `composer-*`, `echo-v1`, empty | unknown | `gpt-tokenizer/cl100k_base` | **approximate** |
 
 If encode throws, source is `approximate` with tokenizer `heuristic` (`ceil(chars/4)`).
 
@@ -27,7 +28,7 @@ If encode throws, source is `approximate` with tokenizer `heuristic` (`ceil(char
 
 | Adapter | `costModel` | Usage we can see | What we price |
 | --- | --- | --- | --- |
-| `echo` | `local` | Estimated with the family tokenizer on the prompt and echo text | Never. Local fake agent. |
+| `echo` | `local` | Estimated from model id when known; otherwise approximate | Never. Local fake agent. |
 | `grok` | `metered` | OpenAI-style `usage` when the API returns it (`prompt_tokens`, `completion_tokens`, `cached_tokens`). Otherwise estimated at run finish from the observed transcript. | Token rates from [xAI pricing](https://docs.x.ai/developers/pricing) for `grok-4.6`, `grok-4.5`, `grok-4.3`. Cache **write** is unpublished → the whole event is unpriced if cache-write tokens are present. Requests ≥200k input use the published long-context rates for the **whole** request. |
 | `perplexity` | `metered` | Same OpenAI-style `usage` if present; else estimate at finish. | Token rates only for `sonar`, `sonar-pro`, `sonar-reasoning-pro` from [Perplexity pricing](https://docs.perplexity.ai/getting-started/pricing). Per-request and search fees are **not** in the ledger. |
 | `generic_llm` | `metered` | Same as grok when the endpoint returns `usage`. | **No builtin rows.** The official OpenAI pricing page could not be fetched when the catalog was written (`asOf` 2026-08-25). Add rows in `pricing.json` if you want dollars. |
@@ -49,6 +50,5 @@ Session `tokensIn` / `tokensOut` are observed counters for the UI. They are not 
 
 - OpenAI / unnamed compatible models are unpriced until an official catalog row exists.
 - Perplexity request fees are outside the token ledger.
-- Gemini coach counts are approximate until a Google tokenizer ships locally.
-- Cursor agent coach counts are approximate (unknown tokenizer family).
+- Gemini, Grok, Ollama, and unrecognized model ids: coach counts stay approximate.
 - We do not hash-chain the ledger. Audit chaining applies to `audit.jsonl`, not this table.

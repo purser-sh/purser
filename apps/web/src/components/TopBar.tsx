@@ -1,61 +1,209 @@
-import { FolderPlus, FolderSync, Search, Settings } from "lucide-react";
-import { VoiceButton } from "@/components/VoiceButton";
+import type { PermissionMode } from "@purser-sh/protocol";
+import { Moon, Settings, Sun, SunMoon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { RunMeter } from "@/components/RunMeter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useDeckStore } from "@/lib/store";
+import { useRunner } from "@/lib/client";
+import { cycleTheme, readThemePreference, themeLabel, type ThemePreference } from "@/lib/theme";
+import { PERMISSION_MODES, selectedSession, useDeckStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
-export function TopBar(props: { onNewWorkspace: () => void; onSettings: () => void }) {
+function ThemeIcon({ preference }: { preference: ThemePreference }) {
+  if (preference === "light") {
+    return <Sun className="h-4 w-4" />;
+  }
+  if (preference === "dark") {
+    return <Moon className="h-4 w-4" />;
+  }
+  return <SunMoon className="h-4 w-4" />;
+}
+
+function bypassCountdown(expiresAt: string | null, runsRemaining: number | null): string | null {
+  const parts: string[] = [];
+  if (expiresAt !== null) {
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (ms > 0) {
+      parts.push(`${Math.ceil(ms / 60_000)}m`);
+    }
+  }
+  if (runsRemaining !== null) {
+    parts.push(`${runsRemaining} run${runsRemaining === 1 ? "" : "s"}`);
+  }
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+export function TopBar(props: { onSettings: () => void }) {
+  const client = useRunner();
+  const sessions = useDeckStore((state) => state.sessions);
+  const selectedSessionId = useDeckStore((state) => state.selectedSessionId);
+  const providerConfigs = useDeckStore((state) => state.providerConfigs);
+  const modelsByProvider = useDeckStore((state) => state.modelsByProvider);
+  const costModelByProvider = useDeckStore((state) => state.costModelByProvider);
+  const lastSpendBySession = useDeckStore((state) => state.lastSpendBySession);
   const connection = useDeckStore((state) => state.connection);
-  const search = useDeckStore((state) => state.search);
-  const setSearch = useDeckStore((state) => state.setSearch);
-  const transcript = useDeckStore((state) => state.transcriptPartial);
-  const voiceActive = useDeckStore((state) => state.voiceActive);
-  const lastSyncEvent = useDeckStore((state) => state.lastSyncEvent);
-  const folderWatches = useDeckStore((state) => state.folderWatches);
+  const setRightPanelTab = useDeckStore((state) => state.setRightPanelTab);
+  const session = selectedSession(sessions, selectedSessionId);
+  const [theme, setTheme] = useState<ThemePreference>(() => readThemePreference());
+  const [, tick] = useState(0);
+
+  useEffect(() => {
+    if (session?.permissionMode !== "bypass") {
+      return;
+    }
+    const id = window.setInterval(() => tick((value) => value + 1), 30_000);
+    return () => window.clearInterval(id);
+  }, [session?.permissionMode]);
+
+  useEffect(() => {
+    if (session === undefined) {
+      return;
+    }
+    void client.request("list_models", { providerId: session.providerId });
+  }, [client, session?.providerId, session]);
+
+  const models = session ? (modelsByProvider[session.providerId] ?? []) : [];
+  const spend = session ? lastSpendBySession[session.id] : undefined;
+  const costModel = session ? (costModelByProvider[session.providerId] ?? "local") : "local";
+
+  async function setProvider(providerId: string) {
+    if (session === undefined) {
+      return;
+    }
+    await client.request("set_session_provider", {
+      sessionId: session.id,
+      providerId,
+      permissionMode: session.permissionMode,
+    });
+  }
+
+  async function setModel(modelId: string) {
+    if (session === undefined) {
+      return;
+    }
+    await client.request("set_session_provider", {
+      sessionId: session.id,
+      providerId: session.providerId,
+      modelId,
+      permissionMode: session.permissionMode,
+    });
+  }
+
+  async function setMode(permissionMode: PermissionMode) {
+    if (session === undefined) {
+      return;
+    }
+    if (permissionMode === "bypass") {
+      setRightPanelTab("setup");
+      return;
+    }
+    await client.request("set_session_provider", {
+      sessionId: session.id,
+      providerId: session.providerId,
+      modelId: session.modelId ?? undefined,
+      permissionMode,
+    });
+  }
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b border-border px-4">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
       <div className="flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary font-mono text-sm font-bold text-primary-foreground">
-          AD
+        <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] border border-border bg-card font-mono text-sm font-bold text-foreground">
+          P
         </div>
-        <div>
-          <div className="text-sm font-semibold tracking-wide">AgentDeck</div>
-          <div className="text-[11px] text-muted-foreground">
-            {transcript.length > 0
-              ? transcript
-              : voiceActive
-                ? "listening…"
-                : "voice · folder sync · token coach"}
+        <span className="text-sm font-semibold tracking-wide">Purser</span>
+      </div>
+
+      {session !== undefined ? (
+        <div className="mx-auto flex min-w-0 flex-wrap items-center justify-center gap-2">
+          <select
+            className="max-w-[8rem] truncate rounded-[var(--radius-control)] border border-border bg-background px-2 py-1 text-[length:var(--text-xs)]"
+            onChange={(event) => void setProvider(event.target.value)}
+            value={session.providerId}
+          >
+            {providerConfigs.map((config) => (
+              <option key={config.id} value={config.providerId}>
+                {config.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-muted-foreground">·</span>
+          <select
+            className="max-w-[10rem] truncate rounded-[var(--radius-control)] border border-border bg-background px-2 py-1 text-[length:var(--text-xs)]"
+            onChange={(event) => void setModel(event.target.value)}
+            value={session.modelId ?? models[0]?.id ?? ""}
+          >
+            {models.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-muted-foreground">·</span>
+          <div className="flex flex-wrap gap-1">
+            {PERMISSION_MODES.map((mode) => {
+              const active = session.permissionMode === mode.id;
+              const countdown =
+                mode.id === "bypass" && active
+                  ? bypassCountdown(session.bypassExpiresAt, session.bypassRunsRemaining)
+                  : null;
+              return (
+                <Button
+                  className={cn(
+                    mode.id === "bypass" && active ? "border-block text-block hover:bg-block-soft" : "",
+                  )}
+                  key={mode.id}
+                  onClick={() => void setMode(mode.id)}
+                  size="sm"
+                  type="button"
+                  variant={active ? "selected" : "outline"}
+                >
+                  {mode.label}
+                  {countdown ? <span className="tabular-nums text-[length:var(--text-2xs)]">({countdown})</span> : null}
+                </Button>
+              );
+            })}
           </div>
         </div>
+      ) : (
+        <p className="mx-auto text-[length:var(--text-xs)] text-muted-foreground">Open a folder to start a session</p>
+      )}
+
+      <div className="ml-auto flex items-center gap-2">
+        {session !== undefined ? (
+          <RunMeter
+            costModel={costModel}
+            onClick={() => setRightPanelTab("spend")}
+            running={session.status === "running"}
+            spend={spend}
+            variant="compact"
+          />
+        ) : null}
+        <Badge
+          className={
+            connection === "ready"
+              ? "border-pass/40 text-pass"
+              : connection === "error"
+                ? "border-block/40 text-block"
+                : "border-warn/40 text-warn"
+          }
+        >
+          {connection}
+        </Badge>
+        <Button
+          aria-label={themeLabel(theme)}
+          onClick={() => setTheme(cycleTheme(theme))}
+          size="icon"
+          title={themeLabel(theme)}
+          type="button"
+          variant="ghost"
+        >
+          <ThemeIcon preference={theme} />
+        </Button>
+        <Button onClick={props.onSettings} size="icon" type="button" variant="ghost">
+          <Settings className="h-4 w-4" />
+        </Button>
       </div>
-      <div className="mx-auto flex w-full max-w-md items-center gap-2">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search workspaces and sessions"
-          value={search}
-        />
-      </div>
-      {folderWatches.length > 0 ? (
-        <span className="hidden max-w-[14rem] truncate text-[11px] text-muted-foreground lg:inline-flex lg:items-center lg:gap-1">
-          <FolderSync className="h-3.5 w-3.5" />
-          {lastSyncEvent !== null ? `${lastSyncEvent.action} ${lastSyncEvent.destPath}` : `${folderWatches.length} watched`}
-        </span>
-      ) : null}
-      <Badge className={connection === "ready" ? "border-emerald-500/40 text-emerald-400" : "text-amber-400"}>
-        {connection}
-      </Badge>
-      <VoiceButton />
-      <Button onClick={props.onNewWorkspace} size="sm" type="button" variant="secondary">
-        <FolderPlus className="h-4 w-4" />
-        Workspace
-      </Button>
-      <Button onClick={props.onSettings} size="icon" type="button" variant="ghost">
-        <Settings className="h-4 w-4" />
-      </Button>
     </header>
   );
 }

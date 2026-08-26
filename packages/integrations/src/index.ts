@@ -27,7 +27,7 @@ export type IdeBridgeHello = {
 };
 
 /**
- * VS Code and Cursor both speak the same AgentDeck websocket protocol.
+ * VS Code and Cursor both speak the same Purser websocket protocol.
  * Extensions are thin: they open the runner socket and forward editor context
  * (cwd, selection, active file) as extraSystemPrompt — they do not own agents.
  */
@@ -63,16 +63,18 @@ export {
   canonicalizePairingCode,
   generatePairingCode,
   isCanonicalPairingCode,
-  pairingCodesEqual,
-  PairingDesk,
   PAIRING_CODE_LENGTH,
   PAIRING_TTL_MS,
   PAIRING_MAX_ATTEMPTS_PER_CODE,
   PAIRING_MAX_ATTEMPTS_PER_SOURCE_PER_MINUTE,
   CROCKFORD,
-} from "./pairing.ts";
+} from "./pairing-code.ts";
+
+export { pairingCodesEqual, PairingDesk } from "./pairing.ts";
 
 export { deriveRelayKey, isSealedFrame, openSealed, sealJson, type SealedFrame } from "./relay-seal.ts";
 
 export { timingSafeEqualString } from "./timing.ts";
+
+export { injectWindowBootstrap } from "./html-inject.ts";
 

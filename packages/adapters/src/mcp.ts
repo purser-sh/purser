@@ -100,7 +100,7 @@ export type McpHandle = {
 };
 
 export async function loadMcpTools(workspaceRoot: string): Promise<McpHandle | null> {
-  const configPath = join(workspaceRoot, ".agentdeck", "mcp.json");
+  const configPath = join(workspaceRoot, ".purser", "mcp.json");
   if (!existsSync(configPath)) {
     return null;
   }
@@ -133,7 +133,7 @@ export async function loadMcpTools(workspaceRoot: string): Promise<McpHandle | n
       await proc.send("initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {},
-        clientInfo: { name: "agentdeck", version: "0.1.0" },
+        clientInfo: { name: "purser", version: "0.1.0" },
       });
       const listed = await proc.send("tools/list", {});
       const tools = isRecord(listed.result) && Array.isArray(listed.result.tools) ? listed.result.tools : [];

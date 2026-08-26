@@ -1,5 +1,5 @@
 {
-  "name": "@agentdeck/db",
+  "name": "@purser-sh/db",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts"
   },
   "dependencies": {
-    "@agentdeck/protocol": "workspace:*",
+    "@purser-sh/protocol": "workspace:*",
     "drizzle-orm": "^0.44.5"
   },
   "devDependencies": {

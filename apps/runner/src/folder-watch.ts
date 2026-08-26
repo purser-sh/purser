@@ -8,8 +8,8 @@ import {
   type FSWatcher,
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import type { FolderWatch } from "@agentdeck/protocol";
-import { getWorkspace, type AppDatabase } from "@agentdeck/db";
+import type { FolderWatch } from "@purser-sh/protocol";
+import { getWorkspace, type AppDatabase } from "@purser-sh/db";
 import { assertAllowed, isInsideRoot, PathError } from "./paths.ts";
 import type { RunnerConfig } from "./config.ts";
 

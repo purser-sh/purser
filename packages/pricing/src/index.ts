@@ -10,9 +10,10 @@ export {
 } from "./price.ts";
 export {
   countTokens,
-  familyForProvider,
+  familyForModel,
   formatTokenCount,
   makeTokenCount,
+  openAiEncodingForModel,
   tokenCountTooltip,
   worseTokenSource,
   TOKENIZER_ANTHROPIC,
@@ -22,3 +23,4 @@ export {
   type TokenCountSource,
   type TokenizerFamily,
 } from "./tokenizer.ts";
+export type { OpenAiEncodingKind } from "./model-family.ts";

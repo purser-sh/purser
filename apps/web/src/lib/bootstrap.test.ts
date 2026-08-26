@@ -4,7 +4,7 @@ import { parseBootstrap, readInjectedBootstrap } from "./bootstrap.ts";
 describe("bootstrap", () => {
   test("prefers the injected window payload over a config route", () => {
     const injected = readInjectedBootstrap({
-      __AGENTDECK_BOOTSTRAP__: {
+      __PURSER_BOOTSTRAP__: {
         wsUrl: "ws://127.0.0.1:7420",
         token: "injected-token",
         allowedRoots: ["/home/me"],

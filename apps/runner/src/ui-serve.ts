@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, relative, resolve, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { checkUiHttp, CONFIG_ROUTE_HEADERS, type HttpGuardPolicy } from "@agentdeck/integrations";
+import { checkUiHttp, CONFIG_ROUTE_HEADERS, injectWindowBootstrap, type HttpGuardPolicy } from "@purser-sh/integrations";
+import { EMBEDDED_UI } from "./embedded-ui.gen.ts";
 
 export type UiBootstrap = {
   wsUrl: string;
@@ -17,12 +18,7 @@ const HTML_HEADERS = {
 } as const;
 
 export function injectBootstrap(html: string, bootstrap: UiBootstrap): string {
-  const payload = JSON.stringify(bootstrap);
-  const snippet = `<script>window.__AGENTDECK_BOOTSTRAP__=${payload};</script>`;
-  if (html.includes("</head>")) {
-    return html.replace("</head>", `${snippet}</head>`);
-  }
-  return `${snippet}${html}`;
+  return injectWindowBootstrap(html, "__PURSER_BOOTSTRAP__", bootstrap);
 }
 
 /** Map a request path to a file under the UI root. `/` and `/phone` serve index.html. */
@@ -106,10 +102,29 @@ export function writeConfigRouteGone(res: ServerResponse): void {
   res.end(JSON.stringify({ error: "not found" }));
 }
 
+export function hasEmbeddedUi(): boolean {
+  return EMBEDDED_UI.length > 0;
+}
+
+function readUiBytes(rel: string, uiDir: string | undefined): Buffer | undefined {
+  const embedded = EMBEDDED_UI.find((file) => file.path === rel);
+  if (embedded !== undefined) {
+    return Buffer.from(embedded.bodyBase64, "base64");
+  }
+  if (uiDir === undefined) {
+    return undefined;
+  }
+  const file = resolveUiFile(uiDir, rel);
+  if (file === undefined) {
+    return undefined;
+  }
+  return readFileSync(file);
+}
+
 export function serveEmbeddedUi(input: {
   req: IncomingMessage;
   res: ServerResponse;
-  uiDir: string;
+  uiDir: string | undefined;
   bootstrap: UiBootstrap;
   policy: HttpGuardPolicy;
 }): boolean {
@@ -131,11 +146,10 @@ export function serveEmbeddedUi(input: {
     input.res.end(JSON.stringify({ error: decision.reason }));
     return true;
   }
-  const file = resolveUiFile(input.uiDir, rel);
-  if (file === undefined) {
+  const raw = readUiBytes(rel, input.uiDir);
+  if (raw === undefined) {
     return false;
   }
-  const raw = readFileSync(file);
   if (rel === "index.html") {
     const html = injectBootstrap(raw.toString("utf8"), input.bootstrap);
     input.res.statusCode = 200;
@@ -145,8 +159,9 @@ export function serveEmbeddedUi(input: {
     input.res.end(html);
     return true;
   }
+  const embedded = EMBEDDED_UI.find((file) => file.path === rel);
   input.res.statusCode = 200;
-  input.res.setHeader("content-type", contentTypeFor(rel));
+  input.res.setHeader("content-type", embedded?.contentType ?? contentTypeFor(rel));
   input.res.setHeader("x-content-type-options", "nosniff");
   input.res.setHeader("cache-control", "public, max-age=31536000, immutable");
   input.res.end(raw);
@@ -154,9 +169,13 @@ export function serveEmbeddedUi(input: {
 }
 
 export function resolveUiDir(metaDir: string): string | undefined {
-  const override = process.env.AGENTDECK_UI_DIR;
+  const override = process.env.PURSER_UI_DIR;
   if (override !== undefined && override.length > 0) {
     return existsSync(join(override, "index.html")) ? override : undefined;
+  }
+  const packaged = typeof Bun !== "undefined" && Bun.isStandaloneExecutable === true;
+  if (!packaged) {
+    return undefined;
   }
   const candidates = [join(metaDir, "ui"), join(metaDir, "..", "ui")];
   for (const dir of candidates) {

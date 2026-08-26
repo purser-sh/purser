@@ -6,7 +6,7 @@ import {
   openSqliteDatabase,
   seedDefaults,
   upsertBudget,
-} from "@agentdeck/db";
+} from "@purser-sh/db";
 import { recordUsageEvent } from "./meter.ts";
 import { classifyGate, inFlightGate, preRunGate, runIdsForWindow } from "./budget.ts";
 
@@ -15,7 +15,7 @@ async function setup() {
   await seedDefaults(db);
   const workspace = insertWorkspace(db, {
     name: "ws",
-    absPath: "/home/aksingh/AgentDeck",
+    absPath: process.cwd(),
     gitRemote: null,
   });
   const session = insertSession(db, {

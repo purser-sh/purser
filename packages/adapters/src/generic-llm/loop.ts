@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@agentdeck/protocol";
+import type { AgentEvent } from "@purser-sh/protocol";
 import type { RunInput } from "../types.ts";
 import { loadMcpTools } from "../mcp.ts";
 import { executeTool, MAX_TURNS, TOOL_DEFINITIONS, toolSummary } from "./tools.ts";

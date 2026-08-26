@@ -6,13 +6,13 @@ export type Bootstrap = {
   pair?: { role: "phone" | "runner"; code: string };
 };
 
-export type AgentdeckWindow = {
-  __AGENTDECK_BOOTSTRAP__?: unknown;
+export type PurserWindow = {
+  __PURSER_BOOTSTRAP__?: unknown;
 };
 
 declare global {
   interface Window {
-    __AGENTDECK_BOOTSTRAP__?: unknown;
+    __PURSER_BOOTSTRAP__?: unknown;
   }
 }
 
@@ -44,6 +44,6 @@ export function parseBootstrap(value: unknown): Bootstrap | undefined {
   };
 }
 
-export function readInjectedBootstrap(globalObject: AgentdeckWindow): Bootstrap | undefined {
-  return parseBootstrap(globalObject.__AGENTDECK_BOOTSTRAP__);
+export function readInjectedBootstrap(globalObject: PurserWindow): Bootstrap | undefined {
+  return parseBootstrap(globalObject.__PURSER_BOOTSTRAP__);
 }

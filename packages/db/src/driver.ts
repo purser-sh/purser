@@ -7,7 +7,7 @@ export function resolveDatabaseDriver(url: string | undefined): {
   url: string;
 } {
   if (url === undefined || url.length === 0) {
-    return { driver: "sqlite", url: "sqlite://~/.agentdeck/agentdeck.sqlite" };
+    return { driver: "sqlite", url: "sqlite://~/.purser/purser.sqlite" };
   }
   const normalized = url.trim();
   if (POSTGRES_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {

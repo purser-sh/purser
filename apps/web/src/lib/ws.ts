@@ -1,21 +1,34 @@
-import { PROTOCOL_VERSION, parseServerMessage, type ClientMessage, type ServerMessage } from "@agentdeck/protocol";
-import { deriveRelayKey, isSealedFrame, openSealed, sealJson } from "@agentdeck/integrations";
+import { PROTOCOL_VERSION, parseServerMessage, type ClientMessage, type ServerMessage } from "@purser-sh/protocol";
+import { deriveRelayKey, isSealedFrame, openSealed, sealJson } from "@purser-sh/integrations/relay-seal";
 import { parseBootstrap, readInjectedBootstrap, type Bootstrap } from "@/lib/bootstrap";
 
 export type { Bootstrap } from "@/lib/bootstrap";
+
+function errorFromConfigBody(body: unknown, fallback: string): string {
+  if (body !== null && typeof body === "object" && "error" in body && typeof body.error === "string") {
+    return body.error;
+  }
+  return fallback;
+}
 
 export async function fetchBootstrap(): Promise<Bootstrap> {
   const injected = readInjectedBootstrap(window);
   if (injected !== undefined) {
     return injected;
   }
-  const response = await fetch("/__agentdeck/config");
+  const response = await fetch("/__purser/config");
   if (!response.ok) {
-    throw new Error("Runner is not running. Start it with bun run dev.");
+    let detail = `HTTP ${response.status}`;
+    try {
+      detail = errorFromConfigBody(await response.json(), detail);
+    } catch {
+      // Keep the status text when the body is not JSON.
+    }
+    throw new Error(`Could not read runner config (${detail}). Start both apps with bun run dev.`);
   }
   const parsed = parseBootstrap(await response.json());
   if (parsed === undefined) {
-    throw new Error("Runner is not running. Start it with bun run dev.");
+    throw new Error("Runner config was malformed. Restart with bun run dev.");
   }
   return parsed;
 }

@@ -9,7 +9,7 @@ import {
   ollamaAdapter,
   perplexityAdapter,
   type AgentAdapter,
-} from "@agentdeck/adapters";
+} from "@purser-sh/adapters";
 
 const adapters = new Map<string, AgentAdapter>(
   [

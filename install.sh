@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Install the AgentDeck companion binary from a GitHub Release.
-# Requires AGENTDECK_REPO (owner/name) and a tagged release with SHA256SUMS.
+# Install the Purser companion binary from a GitHub Release.
+# Requires PURSER_REPO (owner/name) and a tagged release with SHA256SUMS.
 set -euo pipefail
 
-REPO="${AGENTDECK_REPO:-}"
-VERSION="${AGENTDECK_VERSION:-latest}"
-PREFIX="${AGENTDECK_PREFIX:-/usr/local}"
+REPO="${PURSER_REPO:-}"
+VERSION="${PURSER_VERSION:-latest}"
+PREFIX="${PURSER_PREFIX:-/usr/local}"
 
 if [[ -z "${REPO}" ]]; then
-  echo "Set AGENTDECK_REPO=owner/name to the GitHub repository that publishes releases." >&2
+  echo "Set PURSER_REPO=owner/name to the GitHub repository that publishes releases." >&2
   exit 1
 fi
 
@@ -16,12 +16,12 @@ os="$(uname -s)"
 arch="$(uname -m)"
 asset=""
 case "${os}:${arch}" in
-  Darwin:arm64) asset="agentdeck-darwin-arm64" ;;
-  Darwin:x86_64) asset="agentdeck-darwin-x64" ;;
-  Linux:x86_64) asset="agentdeck-linux-x64" ;;
-  Linux:amd64) asset="agentdeck-linux-x64" ;;
+  Darwin:arm64) asset="purser-darwin-arm64" ;;
+  Darwin:x86_64) asset="purser-darwin-x64" ;;
+  Linux:x86_64) asset="purser-linux-x64" ;;
+  Linux:amd64) asset="purser-linux-x64" ;;
   MINGW*|MSYS*|CYGWIN*)
-    echo "On Windows use the agentdeck-windows-x64.exe asset from the release. This script is for macOS/Linux." >&2
+    echo "On Windows use the purser-windows-x64.exe asset from the release. This script is for macOS/Linux." >&2
     exit 1
     ;;
   *)
@@ -54,6 +54,6 @@ if [[ "${actual}" != "${expected}" ]]; then
 fi
 
 install -d "${PREFIX}/bin"
-install -m 0755 "${tmp}/${asset}" "${PREFIX}/bin/agentdeck"
-echo "Installed ${PREFIX}/bin/agentdeck"
-echo "Token is created in ~/.agentdeck/config.json on first run and is not printed."
+install -m 0755 "${tmp}/${asset}" "${PREFIX}/bin/purser"
+echo "Installed ${PREFIX}/bin/purser"
+echo "Token is created in ~/.purser/config.json on first run and is not printed."

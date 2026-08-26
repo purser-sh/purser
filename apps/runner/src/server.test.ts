@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { Socket } from "node:net";
 import { join } from "node:path";
 import { WebSocket } from "ws";
-import { openSqliteDatabase } from "@agentdeck/db";
-import { parseServerMessage, PROTOCOL_VERSION, type ServerMessage } from "@agentdeck/protocol";
+import { openSqliteDatabase } from "@purser-sh/db";
+import { parseServerMessage, PROTOCOL_VERSION, type ServerMessage } from "@purser-sh/protocol";
 import { startServer, type AppContext } from "./server.ts";
 
 const TOKEN = "test-token-1234567890";
@@ -37,11 +38,11 @@ function inboxOf(ws: WebSocket) {
 }
 
 async function boot(): Promise<{ ctx: AppContext; server: { port: number; close: () => Promise<void> } }> {
-  const home = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-home-"));
-  process.env.AGENTDECK_HOME = home;
+  const home = mkdtempSync(join(tmpdir(), ".tmp-home-"));
+  process.env.PURSER_HOME = home;
   const db = openSqliteDatabase(":memory:");
   const ctx: AppContext = {
-    config: { token: TOKEN, port: 0, allowedRoots: ["/home/aksingh/AgentDeck"] },
+    config: { token: TOKEN, port: 0, allowedRoots: [process.cwd()] },
     db,
     clients: new Set(),
     activeRuns: new Map(),
@@ -61,7 +62,7 @@ function connect(port: number, headers: Record<string, string>): WebSocket {
 
 describe("runner websocket", () => {
   test("hello, workspace, session, echo, and persisted history", async () => {
-    const workspacePath = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-ws-"));
+    const workspacePath = mkdtempSync(join(process.cwd(), ".tmp-ws-"));
     const { server } = await boot();
     const ws = connect(server.port, { Authorization: `Bearer ${TOKEN}` });
     await new Promise<void>((resolve, reject) => {
@@ -151,7 +152,7 @@ describe("runner websocket", () => {
 
   test("config route on the runner is always 404 and never CORS", async () => {
     const { server } = await boot();
-    const response = await fetch(`http://127.0.0.1:${server.port}/__agentdeck/config`, {
+    const response = await fetch(`http://127.0.0.1:${server.port}/__purser/config`, {
       headers: {
         Origin: "http://127.0.0.1:7410",
         Host: `127.0.0.1:${server.port}`,
@@ -166,7 +167,7 @@ describe("runner websocket", () => {
   });
 
   test("embedded UI injects the token into HTML for a browser navigation", async () => {
-    const uiDir = mkdtempSync(join("/home/aksingh/AgentDeck", ".tmp-ui-"));
+    const uiDir = mkdtempSync(join(tmpdir(), ".tmp-ui-"));
     writeFileSync(join(uiDir, "index.html"), "<html><head></head><body>deck</body></html>\n");
     const { ctx, server } = await boot();
     ctx.uiDir = uiDir;
@@ -181,7 +182,7 @@ describe("runner websocket", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
     const html = await response.text();
-    expect(html.includes("window.__AGENTDECK_BOOTSTRAP__")).toBe(true);
+    expect(html.includes("window.__PURSER_BOOTSTRAP__")).toBe(true);
     expect(html.includes(TOKEN)).toBe(true);
     const curl = await fetch(`${origin}/`, { headers: { Host: `127.0.0.1:${server.port}` } });
     expect(curl.status).toBe(403);

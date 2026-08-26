@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const RULE_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules", ".agentdeck/rules.md"];
+const RULE_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules", ".purser/rules.md"];
 
 function readIfExists(path: string): string | null {
   if (!existsSync(path)) {
@@ -30,7 +30,7 @@ export function loadWorkspaceRules(workspaceRoot: string): string {
 }
 
 export function loadSkills(workspaceRoot: string): string {
-  const dirs = [join(homedir(), ".agentdeck", "skills"), join(workspaceRoot, ".agentdeck", "skills")];
+  const dirs = [join(homedir(), ".purser", "skills"), join(workspaceRoot, ".purser", "skills")];
   const chunks: string[] = [];
   for (const dir of dirs) {
     if (!existsSync(dir)) continue;

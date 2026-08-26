@@ -74,7 +74,7 @@ export function checkWebsocketUpgrade(input: {
 }
 
 /**
- * Same-origin HTTP for the Vite `/__agentdeck/config` route.
+ * Same-origin HTTP for the Vite `/__purser/config` route.
  * Rejects `Sec-Fetch-Site: cross-site`. Requires Host + Origin allowlists.
  */
 export function checkSameOriginHttp(input: {

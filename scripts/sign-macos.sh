@@ -23,7 +23,7 @@ security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
 
 IDENTITY="${APPLE_CODESIGN_IDENTITY:?APPLE_CODESIGN_IDENTITY (Developer ID Application) is required to sign}"
 
-for bin in "${DIR}"/agentdeck-darwin-arm64 "${DIR}"/agentdeck-darwin-x64; do
+for bin in "${DIR}"/purser-darwin-arm64 "${DIR}"/purser-darwin-x64; do
   if [[ -f "${bin}" ]]; then
     codesign --force --options runtime --sign "${IDENTITY}" --timestamp "${bin}"
     xcrun notarytool submit "${bin}" --key "${KEY_PATH}" --key-id "${APPLE_API_KEY_ID}" --issuer "${APPLE_API_ISSUER}" --wait

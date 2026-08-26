@@ -1,5 +1,5 @@
 {
-  "name": "@agentdeck/web",
+  "name": "@purser-sh/web",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,10 +11,10 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@agentdeck/protocol": "workspace:*",
-    "@agentdeck/prompt-coach": "workspace:*",
-    "@agentdeck/pricing": "workspace:*",
-    "@agentdeck/integrations": "workspace:*",
+    "@purser-sh/protocol": "workspace:*",
+    "@purser-sh/prompt-coach": "workspace:*",
+    "@purser-sh/pricing": "workspace:*",
+    "@purser-sh/integrations": "workspace:*",
     "@tanstack/react-query": "^5.85.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

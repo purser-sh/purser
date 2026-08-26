@@ -21,8 +21,8 @@ import type {
   StoredEventPayload,
   VoiceProfile,
   Workspace,
-} from "@agentdeck/protocol";
-import { PROTOCOL_VERSION, StoredEventPayloadSchema } from "@agentdeck/protocol";
+} from "@purser-sh/protocol";
+import { PROTOCOL_VERSION, StoredEventPayloadSchema } from "@purser-sh/protocol";
 import type { AppDatabase } from "./client.ts";
 import { newId } from "./ids.ts";
 import { toIso } from "./paths.ts";

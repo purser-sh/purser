@@ -1,5 +1,5 @@
 {
-  "name": "@agentdeck/voice",
+  "name": "@purser-sh/voice",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentdeck/protocol": "workspace:*"
+    "@purser-sh/protocol": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.2"

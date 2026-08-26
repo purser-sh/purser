@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AgentEventSchema } from "@agentdeck/protocol";
+import { AgentEventSchema } from "@purser-sh/protocol";
 import { echoAdapter } from "./echo.ts";
 
 async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {

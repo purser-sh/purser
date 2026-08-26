@@ -1,19 +1,19 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentdeckDir } from "./config.ts";
+import { purserDir } from "./config.ts";
 
 const ENV_MAP: Record<string, string[]> = {
-  grok: ["XAI_API_KEY", "AGENTDECK_XAI_API_KEY"],
-  generic_llm: ["OPENAI_API_KEY", "AGENTDECK_OPENAI_API_KEY"],
+  grok: ["XAI_API_KEY", "PURSER_XAI_API_KEY"],
+  generic_llm: ["OPENAI_API_KEY", "PURSER_OPENAI_API_KEY"],
   ollama: [],
-  perplexity: ["PERPLEXITY_API_KEY", "AGENTDECK_PERPLEXITY_API_KEY"],
-  openai: ["OPENAI_API_KEY", "AGENTDECK_OPENAI_API_KEY"],
+  perplexity: ["PERPLEXITY_API_KEY", "PURSER_PERPLEXITY_API_KEY"],
+  openai: ["OPENAI_API_KEY", "PURSER_OPENAI_API_KEY"],
   deepgram: ["DEEPGRAM_API_KEY"],
   elevenlabs: ["ELEVENLABS_API_KEY"],
 };
 
 function secretsPath(): string {
-  return join(agentdeckDir(), "secrets.json");
+  return join(purserDir(), "secrets.json");
 }
 
 function readStore(): Record<string, string> {
@@ -39,12 +39,12 @@ function readStore(): Record<string, string> {
 }
 
 function writeStore(store: Record<string, string>): void {
-  mkdirSync(agentdeckDir(), { recursive: true, mode: 0o700 });
+  mkdirSync(purserDir(), { recursive: true, mode: 0o700 });
   writeFileSync(secretsPath(), `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
 }
 
 export function getSecret(providerId: string): string | null {
-  const keys = ENV_MAP[providerId] ?? [`AGENTDECK_${providerId.toUpperCase()}_API_KEY`];
+  const keys = ENV_MAP[providerId] ?? [`PURSER_${providerId.toUpperCase()}_API_KEY`];
   for (const key of keys) {
     const value = process.env[key];
     if (value !== undefined && value.length > 0) {

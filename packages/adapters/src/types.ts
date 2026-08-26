@@ -1,4 +1,4 @@
-import type { AgentEvent, CostModel, PermissionMode, ProviderKind } from "@agentdeck/protocol";
+import type { AgentEvent, CostModel, PermissionMode, ProviderKind } from "@purser-sh/protocol";
 
 export interface PermissionDecision {
   requestId: string;

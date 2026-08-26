@@ -15,17 +15,20 @@ import type {
   StoredEvent,
   SyncEventPayload,
   Workspace,
-} from "@agentdeck/protocol";
-import { PROTOCOL_VERSION } from "@agentdeck/protocol";
+} from "@purser-sh/protocol";
+import { PROTOCOL_VERSION } from "@purser-sh/protocol";
 import { create } from "zustand";
 
 export type ConnectionStatus = "idle" | "connecting" | "ready" | "error";
+export type RightPanelTab = "spend" | "files" | "setup";
 
 type DeckStore = StatePayload & {
   connection: ConnectionStatus;
   connectionDetail: string | null;
   selectedWorkspaceId: string | null;
   selectedSessionId: string | null;
+  rightPanelTab: RightPanelTab;
+  commandPaletteOpen: boolean;
   liveText: Record<string, string>;
   search: string;
   modelsByProvider: Record<string, ModelInfo[]>;
@@ -40,6 +43,8 @@ type DeckStore = StatePayload & {
   lastSyncEvent: SyncEventPayload | null;
   voiceActive: boolean;
   setSearch: (value: string) => void;
+  setRightPanelTab: (tab: RightPanelTab) => void;
+  setCommandPaletteOpen: (open: boolean) => void;
   setConnection: (status: ConnectionStatus, detail?: string) => void;
   applyState: (state: StatePayload) => void;
   applyServerMessage: (message: ServerMessage) => void;
@@ -88,6 +93,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   protocolVersion: PROTOCOL_VERSION,
   selectedWorkspaceId: null,
   selectedSessionId: null,
+  rightPanelTab: "spend",
+  commandPaletteOpen: false,
   liveText: {},
   search: "",
   modelsByProvider: {},
@@ -102,6 +109,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   lastSyncEvent: null,
   voiceActive: false,
   setSearch: (value) => set({ search: value }),
+  setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   setVoiceActive: (active) => set({ voiceActive: active }),
   clearPermission: (requestId) =>
     set({ pendingPermissions: get().pendingPermissions.filter((item) => item.requestId !== requestId) }),

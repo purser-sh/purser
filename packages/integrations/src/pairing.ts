@@ -1,53 +1,22 @@
+import {
+  canonicalizePairingCode,
+  isCanonicalPairingCode,
+  PAIRING_MAX_ATTEMPTS_PER_CODE,
+  PAIRING_MAX_ATTEMPTS_PER_SOURCE_PER_MINUTE,
+  PAIRING_TTL_MS,
+} from "./pairing-code.ts";
 import { timingSafeEqualString } from "./timing.ts";
 
-/** Crockford base32 without I, L, O, U. */
-export const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-export const PAIRING_CODE_LENGTH = 8;
-export const PAIRING_TTL_MS = 120_000;
-export const PAIRING_MAX_ATTEMPTS_PER_CODE = 5;
-export const PAIRING_MAX_ATTEMPTS_PER_SOURCE_PER_MINUTE = 20;
-
-export function canonicalizePairingCode(raw: string): string {
-  let out = "";
-  for (const char of raw.trim().toUpperCase()) {
-    if (char === "-" || char === " ") {
-      continue;
-    }
-    if (char === "I" || char === "L") {
-      out += "1";
-      continue;
-    }
-    if (char === "O") {
-      out += "0";
-      continue;
-    }
-    out += char;
-  }
-  return out;
-}
-
-export function isCanonicalPairingCode(code: string): boolean {
-  if (code.length < PAIRING_CODE_LENGTH) {
-    return false;
-  }
-  for (const char of code) {
-    if (!CROCKFORD.includes(char)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-export function generatePairingCode(length = PAIRING_CODE_LENGTH): string {
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  let out = "";
-  for (const byte of bytes) {
-    out += CROCKFORD.charAt(byte % CROCKFORD.length);
-  }
-  return out;
-}
+export {
+  canonicalizePairingCode,
+  CROCKFORD,
+  generatePairingCode,
+  isCanonicalPairingCode,
+  PAIRING_CODE_LENGTH,
+  PAIRING_MAX_ATTEMPTS_PER_CODE,
+  PAIRING_MAX_ATTEMPTS_PER_SOURCE_PER_MINUTE,
+  PAIRING_TTL_MS,
+} from "./pairing-code.ts";
 
 export function pairingCodesEqual(presented: string, expected: string): boolean {
   return timingSafeEqualString(canonicalizePairingCode(presented), canonicalizePairingCode(expected));
@@ -74,11 +43,13 @@ type SourceWindow = { timestamps: number[] };
 export class PairingDesk {
   private readonly rooms = new Map<string, Room>();
   private readonly sources = new Map<string, SourceWindow>();
+  private readonly now: () => number;
+  private readonly ttlMs: number;
 
-  constructor(
-    private readonly now: () => number = () => Date.now(),
-    private readonly ttlMs: number = PAIRING_TTL_MS,
-  ) {}
+  constructor(now: () => number = () => Date.now(), ttlMs: number = PAIRING_TTL_MS) {
+    this.now = now;
+    this.ttlMs = ttlMs;
+  }
 
   pair(rawCode: string, role: PairRole, source: string): PairingResult {
     const now = this.now();

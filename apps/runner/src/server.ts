@@ -21,7 +21,7 @@ import {
   upsertBudget,
   deleteBudget as dbDeleteBudget,
   type AppDatabase,
-} from "@agentdeck/db";
+} from "@purser-sh/db";
 import {
   parseClientMessage,
   PROTOCOL_VERSION,
@@ -30,9 +30,9 @@ import {
   type Session,
   type BudgetDecision,
   type BudgetStatus,
-} from "@agentdeck/protocol";
+} from "@purser-sh/protocol";
 import type { RunnerConfig } from "./config.ts";
-import { agentdeckDir, resolvedHosts, resolvedOrigins } from "./config.ts";
+import { purserDir, resolvedHosts, resolvedOrigins } from "./config.ts";
 import { detectGitRemote, setOriginRemote } from "./git.ts";
 import {
   assertAllowed,
@@ -49,10 +49,9 @@ import { connectRelay, type RelayHandle } from "./relay.ts";
 import { VoiceSession, toBase64Pcm } from "./voice-session.ts";
 import { describeRunning, lastAssistantText, parseLocalCommand } from "./voice-commands.ts";
 import { FolderWatchService } from "./folder-watch.ts";
-import { coachPrompt } from "@agentdeck/prompt-coach";
-import { familyForProvider } from "@agentdeck/pricing";
-import { checkWebsocketUpgrade, pairingCodesEqual, parseRemote, sealJson, timingSafeEqualString } from "@agentdeck/integrations";
-import { serveEmbeddedUi, writeConfigRouteGone } from "./ui-serve.ts";
+import { coachPrompt } from "@purser-sh/prompt-coach";
+import { checkWebsocketUpgrade, pairingCodesEqual, parseRemote, sealJson, timingSafeEqualString } from "@purser-sh/integrations";
+import { hasEmbeddedUi, serveEmbeddedUi, writeConfigRouteGone } from "./ui-serve.ts";
 import {
   consumeBypassRun,
   enableBypass,
@@ -73,7 +72,7 @@ function loadState(db: AppDatabase) {
 }
 
 function writeAudit(ctx: AppContext, event: Parameters<typeof appendAudit>[1]): void {
-  appendAudit(agentdeckDir(), event, { redactPaths: ctx.config.redactPaths === true });
+  appendAudit(purserDir(), event, { redactPaths: ctx.config.redactPaths === true });
 }
 
 const MAX_FILE_BYTES = 512 * 1024;
@@ -268,7 +267,7 @@ async function startRunAfterGate(
     if (reply.decision === "allow_with_headroom" && reply.headroomUsdMicros !== undefined) {
       extraUsdByBudget.set(gate.status.budgetId, reply.headroomUsdMicros);
     }
-    appendAudit(agentdeckDir(), {
+    appendAudit(purserDir(), {
       ts: new Date().toISOString(),
       type: "budget_override",
       sessionId: refreshed.id,
@@ -291,7 +290,7 @@ async function startRunAfterGate(
   const controller = new AbortController();
   ctx.activeRuns.set(run.id, controller);
   broadcast(ctx, { id: replyId, type: "run_started", payload: { runId: run.id, sessionId: run.sessionId } });
-  appendAudit(agentdeckDir(), {
+  appendAudit(purserDir(), {
     ts: new Date().toISOString(),
     type: "run_started",
     sessionId: run.sessionId,
@@ -801,8 +800,11 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
     case "estimate_prompt": {
       const session =
         message.payload.sessionId !== undefined ? getSession(ctx.db, message.payload.sessionId) : undefined;
-      const family = familyForProvider(session?.providerId ?? "echo");
-      send(client, { id: message.id, type: "prompt_estimate", payload: coachPrompt(message.payload.text, family) });
+      send(client, {
+        id: message.id,
+        type: "prompt_estimate",
+        payload: coachPrompt(message.payload.text, session?.modelId),
+      });
       return;
     }
     case "estimate_run": {
@@ -810,8 +812,7 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       if (session === undefined) {
         throw new HandlerError("not_found", "session not found");
       }
-      const family = familyForProvider(session.providerId);
-      const coach = coachPrompt(message.payload.text, family);
+      const coach = coachPrompt(message.payload.text, session.modelId);
       const spend = estimateRunSpend(ctx.db, session, message.payload.text);
       send(client, {
         id: message.id,
@@ -1008,11 +1009,11 @@ export function startServer(ctx: AppContext): Promise<{ port: number; close: () 
       health(req, res);
       return;
     }
-    if (url.pathname === "/__agentdeck/config") {
+    if (url.pathname === "/__purser/config") {
       writeConfigRouteGone(res);
       return;
     }
-    if (req.method === "GET" && ctx.uiDir !== undefined) {
+    if (req.method === "GET" && (ctx.uiDir !== undefined || hasEmbeddedUi())) {
       const address = httpServer.address();
       const port = typeof address === "object" && address !== null ? address.port : ctx.config.port;
       const served = serveEmbeddedUi({
@@ -1059,7 +1060,7 @@ export function startServer(ctx: AppContext): Promise<{ port: number; close: () 
         return;
       }
       if (decision.kind === "token-client") {
-        console.info("agentdeck: websocket upgrade from token-client (no Origin)");
+        console.info("purser: websocket upgrade from token-client (no Origin)");
       }
       callback(true);
     },

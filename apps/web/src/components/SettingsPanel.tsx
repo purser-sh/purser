@@ -1,4 +1,4 @@
-import { generatePairingCode, PAIRING_CODE_LENGTH } from "@agentdeck/integrations";
+import { generatePairingCode, PAIRING_CODE_LENGTH } from "@purser-sh/integrations/pairing-code";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,7 @@ export function SettingsPanel() {
       <section>
         <h3 className="mb-2 font-medium">API keys</h3>
         <p className="mb-2 text-xs text-muted-foreground">
-          Keys are stored in <code className="font-mono">~/.agentdeck/secrets.json</code>, never in SQLite.
+          Keys are stored in <code className="font-mono">~/.purser/secrets.json</code>, never in SQLite.
         </p>
         {configs
           .filter((config) => config.authMode === "keychain")
@@ -60,6 +60,7 @@ export function SettingsPanel() {
                   }}
                   size="sm"
                   type="button"
+                  variant="outline"
                 >
                   Save
                 </Button>
@@ -81,6 +82,7 @@ export function SettingsPanel() {
           onClick={() => void client.request("pair_relay", { relayUrl, code })}
           size="sm"
           type="button"
+          variant="outline"
         >
           Pair relay
         </Button>
@@ -113,6 +115,7 @@ export function SettingsPanel() {
           }}
           size="sm"
           type="button"
+          variant="outline"
         >
           Watch this folder
         </Button>
@@ -154,6 +157,7 @@ export function SettingsPanel() {
           }}
           size="sm"
           type="button"
+          variant="outline"
         >
           Link repository
         </Button>

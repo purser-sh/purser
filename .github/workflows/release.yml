@@ -48,7 +48,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: binaries-darwin-signed
-          path: dist/bin/agentdeck-darwin-*
+          path: dist/bin/purser-darwin-*
 
   sign-windows:
     needs: compile
@@ -69,7 +69,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: binaries-windows-signed
-          path: dist/bin/agentdeck-windows-x64.exe
+          path: dist/bin/purser-windows-x64.exe
 
   draft-release:
     needs: [compile, sign-macos, sign-windows]
@@ -97,7 +97,7 @@ jobs:
       - name: checksums
         run: |
           cd dist/bin
-          sha256sum agentdeck-darwin-arm64 agentdeck-darwin-x64 agentdeck-linux-x64 agentdeck-windows-x64.exe > SHA256SUMS
+          sha256sum purser-darwin-arm64 purser-darwin-x64 purser-linux-x64 purser-windows-x64.exe > SHA256SUMS
       - name: draft GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -106,9 +106,9 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             --draft \
             --title "${GITHUB_REF_NAME}" \
-            --notes "Companion binaries. Unsigned unless Apple/Authenticode secrets were present. Check SHA256SUMS. The token is never printed; it is created in ~/.agentdeck/config.json." \
-            dist/bin/agentdeck-darwin-arm64 \
-            dist/bin/agentdeck-darwin-x64 \
-            dist/bin/agentdeck-linux-x64 \
-            dist/bin/agentdeck-windows-x64.exe \
+            --notes "Companion binaries. Unsigned unless Apple/Authenticode secrets were present. Check SHA256SUMS. The token is never printed; it is created in ~/.purser/config.json." \
+            dist/bin/purser-darwin-arm64 \
+            dist/bin/purser-darwin-x64 \
+            dist/bin/purser-linux-x64 \
+            dist/bin/purser-windows-x64.exe \
             dist/bin/SHA256SUMS

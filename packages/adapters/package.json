@@ -1,5 +1,5 @@
 {
-  "name": "@agentdeck/adapters",
+  "name": "@purser-sh/adapters",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentdeck/protocol": "workspace:*",
-    "@agentdeck/pricing": "workspace:*"
+    "@purser-sh/protocol": "workspace:*",
+    "@purser-sh/pricing": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",

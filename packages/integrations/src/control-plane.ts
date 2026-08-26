@@ -15,7 +15,7 @@ export type ScaleGate = {
 /**
  * Cloud scale is cell-based: each cell is an independent stack
  * (API, Postgres, object store, queue). Users are routed by tenant id,
- * not by a global SQLite file. Local AgentDeck remains cell zero:
+ * not by a global SQLite file. Local Purser remains cell zero:
  * one machine, one runner, no multi-tenant sharing.
  */
 export const SCALE_GATES = {

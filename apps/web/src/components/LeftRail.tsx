@@ -92,10 +92,15 @@ export function LeftRail(props: { onOpenWorkspace: () => void }) {
                   <Button
                     className="w-full justify-start"
                     onClick={() => {
-                      const first = providerConfigs[0]?.providerId ?? "echo";
+                      // Inherit the last provider used in this workspace so a
+                      // restart + "New session" does not silently reset to Echo.
+                      const prior = workspaceSessions(sessions, workspace.id).sort((a, b) =>
+                        b.updatedAt.localeCompare(a.updatedAt),
+                      )[0];
+                      const providerId = prior?.providerId ?? providerConfigs[0]?.providerId ?? "echo";
                       void client.request("create_session", {
                         workspaceId: workspace.id,
-                        providerId: first,
+                        providerId,
                         permissionMode: "ask",
                       });
                     }}

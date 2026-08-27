@@ -17,8 +17,12 @@ export async function openFolderWithSession(client: RunnerClient, absPath: strin
   }
   const sessions = useDeckStore.getState().sessions.filter((session) => session.workspaceId === workspaceId);
   if (sessions.length > 0) {
+    // Prefer the most recently updated session so a restart lands on the one
+    // the user was actually using, not the first-created echo session.
+    const preferred =
+      [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? sessions[0];
     useDeckStore.getState().selectWorkspace(workspaceId);
-    useDeckStore.getState().selectSession(sessions[0]?.id ?? null);
+    useDeckStore.getState().selectSession(preferred?.id ?? null);
     return;
   }
   const configs = useDeckStore.getState().providerConfigs;

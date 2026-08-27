@@ -22,7 +22,12 @@ import type {
   VoiceProfile,
   Workspace,
 } from "@purser-sh/protocol";
-import { PROTOCOL_VERSION, StoredEventPayloadSchema } from "@purser-sh/protocol";
+import {
+  PROTOCOL_VERSION,
+  StoredEventPayloadSchema,
+  describeIncoherentPair,
+  isModelCoherent,
+} from "@purser-sh/protocol";
 import type { AppDatabase } from "./client.ts";
 import { newId } from "./ids.ts";
 import { toIso } from "./paths.ts";
@@ -588,6 +593,18 @@ export function updateWorkspace(
 
 export type LedgerSource = "provider_usage" | "estimated";
 
+/**
+ * The ledger is the source of truth for spend, so it refuses rows that
+ * describe a run that could not have happened. Callers resolve the model
+ * against the provider before they get here.
+ */
+export class LedgerIntegrityError extends Error {
+  constructor(detail: string) {
+    super(`ledger rejected the entry: ${detail}`);
+    this.name = "LedgerIntegrityError";
+  }
+}
+
 export type LedgerEntry = {
   id: string;
   ts: Date;
@@ -649,6 +666,9 @@ export function appendLedgerEntry(
     ts?: Date;
   },
 ): LedgerEntry {
+  if (!isModelCoherent(input.providerId, input.model)) {
+    throw new LedgerIntegrityError(describeIncoherentPair(input.providerId, input.model ?? ""));
+  }
   const now = input.ts ?? new Date();
   const row = {
     id: newId("led"),
@@ -879,18 +899,43 @@ export function nextUtcMonth(ts: Date): Date {
   return new Date(Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth() + 1, 1));
 }
 
+/** Local calendar day start — what "Today" means in the Spend UI. */
+export function localDayStart(ts: Date): Date {
+  return new Date(ts.getFullYear(), ts.getMonth(), ts.getDate());
+}
+
+export function nextLocalDay(ts: Date): Date {
+  const start = localDayStart(ts);
+  return new Date(start.getTime() + 24 * 60 * 60 * 1000);
+}
+
+export function localMonthStart(ts: Date): Date {
+  return new Date(ts.getFullYear(), ts.getMonth(), 1);
+}
+
+export function nextLocalMonth(ts: Date): Date {
+  return new Date(ts.getFullYear(), ts.getMonth() + 1, 1);
+}
+
 function bucketFromRows(rows: LedgerEntry[]): SpendBucket {
   const totals = sumLedgerRows(rows);
   return { tokens: totals.tokens, costUsdMicros: totals.costUsdMicros };
 }
 
+/**
+ * Day/month totals come from ledger row timestamps in the local calendar, not
+ * from the runs table. Bucketing through runs left orphaned ledger rows (and a
+ * stale UI that never refreshed after spend_update) showing Today = 0 while
+ * This run showed thousands of tokens.
+ */
 export function loadSpendSummary(db: AppDatabase, now = new Date()): SpendSummary {
-  const dayStart = utcDayStart(now);
-  const monthStart = utcMonthStart(now);
-  const dayRuns = listRunsStartedBetween(db, dayStart, nextUtcDay(now));
-  const monthRuns = listRunsStartedBetween(db, monthStart, nextUtcMonth(now));
-  const dayRows = listLedgerForRuns(db, dayRuns.map((run) => run.id));
-  const monthRows = listLedgerForRuns(db, monthRuns.map((run) => run.id));
+  const dayStart = localDayStart(now);
+  const dayEnd = nextLocalDay(now);
+  const monthStart = localMonthStart(now);
+  const monthEnd = nextLocalMonth(now);
+  const all = listLedger(db);
+  const dayRows = all.filter((row) => row.ts >= dayStart && row.ts < dayEnd);
+  const monthRows = all.filter((row) => row.ts >= monthStart && row.ts < monthEnd);
   const workspaceIds = new Set<string>();
   for (const row of monthRows) {
     workspaceIds.add(row.workspaceId);

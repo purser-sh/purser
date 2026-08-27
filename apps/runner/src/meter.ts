@@ -72,8 +72,18 @@ export function finalizeRunLedger(
   session: Session,
   runId: string,
   observedText: string,
-  now = new Date(),
+  options: {
+    /**
+     * Whether a run the provider never billed should still be charged our own
+     * token estimate. True for runs that reached the provider (the prompt was
+     * spent even if no usage came back) and false for runs that never left
+     * Purser, where an estimate would be invented spend.
+     */
+    estimateWhenSilent?: boolean;
+    now?: Date;
+  } = {},
 ): void {
+  const now = options.now ?? new Date();
   const existing = listLedgerByRun(db, runId);
   const hasPositive = existing.some(
     (row) => row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens > 0,
@@ -82,7 +92,7 @@ export function finalizeRunLedger(
   let inputTokens = 0;
   let outputTokens = 0;
   let source: LedgerSource = "provider_usage";
-  if (!hasPositive) {
+  if (!hasPositive && options.estimateWhenSilent !== false) {
     const counted = countTokens(observedText, session.modelId);
     inputTokens = counted.value;
     source = "estimated";

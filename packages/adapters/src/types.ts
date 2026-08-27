@@ -1,4 +1,4 @@
-import type { AgentEvent, CostModel, PermissionMode, ProviderKind } from "@purser-sh/protocol";
+import type { AgentEvent, CostModel, PermissionMode, ProviderKind, ReadinessState, Remedy } from "@purser-sh/protocol";
 
 export interface PermissionDecision {
   requestId: string;
@@ -28,7 +28,10 @@ export interface RunInput {
 
 export interface HealthResult {
   ok: boolean;
+  /** One sentence, already phrased for the UI. Equals `${remedy.title} ${remedy.fix}` when blocked. */
   detail: string;
+  state: ReadinessState;
+  remedy: Remedy | null;
 }
 
 export interface ModelInfo {

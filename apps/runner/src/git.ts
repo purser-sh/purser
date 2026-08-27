@@ -43,6 +43,14 @@ export function detectGitBranch(absPath: string): string | null {
   return branch.length > 0 ? branch : null;
 }
 
+export function countDirtyPaths(absPath: string): number {
+  const result = spawnSync("git", ["-C", absPath, "status", "--porcelain"], { encoding: "utf8" });
+  if (result.status !== 0) {
+    return 0;
+  }
+  return result.stdout.split("\n").filter((line) => line.trim().length > 0).length;
+}
+
 export function setOriginRemote(absPath: string, remoteUrl: string): { ok: boolean; detail: string } {
   if (!isGitRepo(absPath)) {
     return { ok: false, detail: "folder is not a git repository" };

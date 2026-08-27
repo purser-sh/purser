@@ -110,6 +110,20 @@ export function startRelay(host: string, port: number): ReturnType<typeof create
     ws.on("close", () => drop(ws));
   });
 
+  httpServer.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(
+        [
+          `Port ${port} is already in use.`,
+          `Free it with: lsof -ti:${port} | xargs -r kill`,
+          `Or start the relay elsewhere: PURSER_RELAY_PORT=${port + 1} bun run --filter @purser-sh/relay dev`,
+        ].join("\n"),
+      );
+      process.exit(1);
+    }
+    console.error(error.message);
+    process.exit(1);
+  });
   httpServer.listen(port, host);
   return httpServer;
 }

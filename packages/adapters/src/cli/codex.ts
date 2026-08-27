@@ -1,7 +1,9 @@
+import { modelChoices } from "@purser-sh/protocol";
 import type { AgentAdapter, RunInput } from "../types.ts";
-import { MissingCliError, spawnJsonl } from "./spawn-jsonl.ts";
+import { spawnJsonl } from "./spawn-jsonl.ts";
 import { mapJsonlEvent } from "./map-jsonl.ts";
 import { which } from "./which.ts";
+import { blockedRunEvents, cliReadiness } from "../readiness.ts";
 
 function sandboxFlag(mode: RunInput["permissionMode"]): string[] {
   if (mode === "bypass") {
@@ -16,22 +18,16 @@ export const codexAdapter: AgentAdapter = {
   kind: "cli",
   costModel: "subscription",
   async checkHealth() {
-    const path = which("codex");
-    if (path === null) {
-      return { ok: false, detail: "codex CLI is not installed or not on PATH." };
-    }
-    return { ok: true, detail: `codex found at ${path}` };
+    return cliReadiness("codex", "codex", which("codex"));
   },
   async listModels() {
-    return [
-      { id: "gpt-5", label: "gpt-5" },
-      { id: "o3", label: "o3" },
-      { id: "o4-mini", label: "o4-mini" },
-    ];
+    return modelChoices("codex");
   },
   async *run(input) {
-    if (which("codex") === null) {
-      throw new MissingCliError("codex");
+    const health = cliReadiness("codex", "codex", which("codex"));
+    if (!health.ok) {
+      yield* blockedRunEvents(health);
+      return;
     }
     const args =
       input.providerSessionId !== undefined

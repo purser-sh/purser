@@ -154,6 +154,51 @@ describe("meter", () => {
     expect(rows[0]?.inputTokens).toBeGreaterThan(0);
   });
 
+  test("a run the provider refused records no estimated tokens", async () => {
+    const { db } = openHomeDb();
+    await seedDefaults(db);
+    const workspace = insertWorkspace(db, {
+      name: "ws",
+      absPath: process.cwd(),
+      gitRemote: null,
+    });
+    const session = insertSession(db, {
+      workspaceId: workspace.id,
+      title: "claude",
+      providerId: "claude_code",
+      modelId: "sonnet",
+      permissionMode: "ask",
+    });
+    const run = insertRun(db, session.id);
+    // No CLI, no credentials: the adapter refuses before the provider is called.
+    const path = process.env.PATH;
+    const home = process.env.HOME;
+    process.env.PATH = mkdtempSync(join(tmpdir(), ".tmp-nopath-"));
+    process.env.HOME = mkdtempSync(join(tmpdir(), ".tmp-nohome-"));
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      await executeRun({
+        db,
+        sessionId: session.id,
+        runId: run.id,
+        prompt: "a prompt long enough to count for something",
+        signal: new AbortController().signal,
+        broadcast: () => undefined,
+        askPermission: async () => true,
+      });
+    } finally {
+      process.env.PATH = path;
+      process.env.HOME = home;
+    }
+    const rows = listLedgerByRun(db, run.id);
+    /*
+     * Nothing was spent, so nothing may be billed. An estimate here would be
+     * the coach's number leaking into the ledger as if it were spend.
+     */
+    expect(rows.every((row) => row.inputTokens + row.outputTokens === 0)).toBe(true);
+    expect(rows.some((row) => row.source === "estimated")).toBe(false);
+  });
+
   test("cancelled run still records partial estimated spend", async () => {
     const { db } = openHomeDb();
     await seedDefaults(db);

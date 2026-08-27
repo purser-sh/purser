@@ -1,14 +1,14 @@
 import {
   listBudgets,
+  listLedger,
   listLedgerByRun,
-  listLedgerForRuns,
   listRunsStartedBetween,
   loadState,
-  nextUtcDay,
-  nextUtcMonth,
+  localDayStart,
+  localMonthStart,
+  nextLocalDay,
+  nextLocalMonth,
   sumLedgerRows,
-  utcDayStart,
-  utcMonthStart,
   type AppDatabase,
   type LedgerTotals,
 } from "@purser-sh/db";
@@ -60,7 +60,28 @@ export function applicableBudgets(db: AppDatabase, session: Session): Budget[] {
   });
 }
 
-/** Day/month windows bucket by the run start timestamp (UTC), not by each ledger row. */
+/** Day/month windows bucket ledger rows by local calendar ts — same as loadSpendSummary. */
+function ledgerRowsForWindow(
+  db: AppDatabase,
+  window: Budget["window"],
+  startedAt: Date,
+  runId: string | null,
+) {
+  if (window === "run") {
+    return runId === null ? [] : listLedgerByRun(db, runId);
+  }
+  const all = listLedger(db);
+  if (window === "day") {
+    const start = localDayStart(startedAt);
+    const end = nextLocalDay(startedAt);
+    return all.filter((row) => row.ts >= start && row.ts < end);
+  }
+  const start = localMonthStart(startedAt);
+  const end = nextLocalMonth(startedAt);
+  return all.filter((row) => row.ts >= start && row.ts < end);
+}
+
+/** @deprecated Prefer ledgerRowsForWindow; kept for tests that assert run-id bucketing for run window. */
 export function runIdsForWindow(
   db: AppDatabase,
   window: Budget["window"],
@@ -71,9 +92,9 @@ export function runIdsForWindow(
     return runId === null ? [] : [runId];
   }
   if (window === "day") {
-    return listRunsStartedBetween(db, utcDayStart(startedAt), nextUtcDay(startedAt)).map((run) => run.id);
+    return listRunsStartedBetween(db, localDayStart(startedAt), nextLocalDay(startedAt)).map((run) => run.id);
   }
-  return listRunsStartedBetween(db, utcMonthStart(startedAt), nextUtcMonth(startedAt)).map((run) => run.id);
+  return listRunsStartedBetween(db, localMonthStart(startedAt), nextLocalMonth(startedAt)).map((run) => run.id);
 }
 
 function totalsForBudget(
@@ -83,8 +104,7 @@ function totalsForBudget(
   startedAt: Date,
   runId: string | null,
 ): LedgerTotals {
-  const ids = runIdsForWindow(db, budget.window, startedAt, runId);
-  const rows = listLedgerForRuns(db, ids).filter((row) => {
+  const rows = ledgerRowsForWindow(db, budget.window, startedAt, runId).filter((row) => {
     if (budget.scope === "workspace") {
       return row.workspaceId === session.workspaceId;
     }
@@ -264,8 +284,12 @@ export function withLedgerLock<T>(db: AppDatabase, fn: () => T): T {
 }
 
 export function buildSpendReport(db: AppDatabase, query: GetSpendPayload, now = new Date()): SpendReportPayload {
-  const ids = runIdsForWindow(db, query.window, now, null);
-  let rows = listLedgerForRuns(db, ids);
+  let rows =
+    query.window === "run"
+      ? []
+      : query.window === "day"
+        ? listLedger(db).filter((row) => row.ts >= localDayStart(now) && row.ts < nextLocalDay(now))
+        : listLedger(db).filter((row) => row.ts >= localMonthStart(now) && row.ts < nextLocalMonth(now));
   if (query.scope === "workspace" && query.scopeId !== undefined) {
     rows = rows.filter((row) => row.workspaceId === query.scopeId);
   }
@@ -281,7 +305,7 @@ export function buildSpendReport(db: AppDatabase, query: GetSpendPayload, now = 
         : groupBy === "workspace"
           ? row.workspaceId
           : groupBy === "day"
-            ? utcDayStart(row.ts).toISOString().slice(0, 10)
+            ? localDayStart(row.ts).toISOString().slice(0, 10)
             : row.providerId;
     const list = grouped.get(key) ?? [];
     list.push(row);

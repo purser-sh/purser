@@ -8,8 +8,10 @@ import {
   insertEvent,
   insertRun,
   updateSession,
+  LedgerIntegrityError,
   type AppDatabase,
 } from "@purser-sh/db";
+import { describeVendorFailure } from "@purser-sh/adapters";
 import { getAdapter } from "./registry.ts";
 import { appendRunLog } from "./run-log.ts";
 import { getSecret } from "./secrets.ts";
@@ -26,6 +28,21 @@ import {
 import type { BudgetDecision, BudgetStatus, SpendUpdatePayload } from "@purser-sh/protocol";
 
 const SKIP_PERSIST = new Set<AgentEvent["kind"]>(["text_delta"]);
+
+/**
+ * Events that prove the provider did work on this run. A failed login reaches
+ * `session_started` and nothing else, and must not be billed an estimate.
+ */
+const SPEND_EVIDENCE = new Set<AgentEvent["kind"]>([
+  "text",
+  "text_delta",
+  "thinking",
+  "tool_call",
+  "tool_result",
+  "file_diff",
+  "permission_request",
+  "usage",
+]);
 
 function roleFor(event: AgentEvent): EventRole {
   if (event.kind === "tool_call" || event.kind === "tool_result") {
@@ -86,6 +103,8 @@ export async function executeRun(input: {
   let runStatus: "ok" | "cancelled" | "error" = "ok";
   let runError: string | null = null;
   let observedText = input.prompt;
+  /** Whether the provider did any work. `session_started` alone is bookkeeping, not spend. */
+  let producedOutput = false;
   let liveSession = session;
   const extraUsdByBudget = input.extraUsdByBudget ?? new Map<string, number>();
   const asked = new Set<string>();
@@ -118,6 +137,9 @@ export async function executeRun(input: {
         }),
     })) {
       appendRunLog(input.runId, event);
+      if (SPEND_EVIDENCE.has(event.kind)) {
+        producedOutput = true;
+      }
       input.broadcast({
         type: "agent_event",
         payload: { sessionId: input.sessionId, runId: input.runId, seq, event },
@@ -243,8 +265,17 @@ export async function executeRun(input: {
       });
     } else {
       runStatus = "error";
-      runError = error instanceof Error ? error.message : "run failed";
-      const failed: AgentEvent = { kind: "error", message: runError, fatal: true };
+      const described = describeVendorFailure(
+        { providerId: session.providerId, label: adapter.label, baseUrl: provider?.baseUrl ?? null },
+        error instanceof Error ? error.message : "run failed",
+      );
+      runError = described.message;
+      const failed: AgentEvent = {
+        kind: "error",
+        message: described.message,
+        fatal: true,
+        remedy: described.remedy,
+      };
       appendRunLog(input.runId, failed);
       input.broadcast({
         type: "agent_event",
@@ -259,7 +290,26 @@ export async function executeRun(input: {
     }
   } finally {
     const latest = getSession(input.db, input.sessionId) ?? liveSession;
-    finalizeRunLedger(input.db, latest, input.runId, observedText);
+    try {
+      finalizeRunLedger(input.db, latest, input.runId, observedText, {
+        estimateWhenSilent: runStatus !== "error" || producedOutput,
+      });
+    } catch (error) {
+      // The ledger refused the row rather than storing an impossible pair. Fail
+      // the run loudly instead of losing the rejection in cleanup.
+      if (!(error instanceof LedgerIntegrityError)) {
+        throw error;
+      }
+      runStatus = "error";
+      runError = error.message;
+      appendAudit(purserDir(), {
+        ts: new Date().toISOString(),
+        type: "ledger_rejected",
+        sessionId: input.sessionId,
+        runId: input.runId,
+        detail: error.message,
+      });
+    }
     input.onSpendUpdate?.(buildSpendUpdate(input.db, latest, input.runId, startedAt, extraUsdByBudget), true);
     finishRun(input.db, input.runId, runStatus === "ok" ? "ok" : runStatus, runError);
     appendAudit(purserDir(), {

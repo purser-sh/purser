@@ -46,7 +46,7 @@ type FullProps = {
   spendSummary: SpendSummary;
   costModel: CostModel;
   providerRows: { key: string; tokens: number; costUsdMicros: number | null }[];
-  sessionRows: { key: string; tokens: number; costUsdMicros: number | null }[];
+  sessionRows: { key: string; tokens: number; costUsdMicros: number | null; isOthers?: boolean }[];
   estimate?: PromptEstimate | null;
   onUseShorter?: () => void;
 };
@@ -183,7 +183,9 @@ function RunMeterFull(props: FullProps) {
           <div className="space-y-1">
             {props.sessionRows.map((row) => (
               <div className="flex justify-between gap-2 tabular-nums text-[length:var(--text-xs)]" key={row.key}>
-                <span className="truncate text-text-2">{row.key}</span>
+                <span className={cn("truncate text-text-2", row.isOthers ? "italic text-muted-foreground" : "")}>
+                  {row.key}
+                </span>
                 <span className="shrink-0 text-foreground">
                   {row.tokens.toLocaleString("en-US")} tok, {row.costUsdMicros !== null ? formatUsdMicros(row.costUsdMicros) : "n/a"}
                 </span>

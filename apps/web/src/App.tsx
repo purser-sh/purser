@@ -12,8 +12,15 @@ import { ToastHost } from "@/components/ToastHost";
 import { TopBar } from "@/components/TopBar";
 import { Dialog } from "@/components/ui/dialog";
 import { ClientProvider } from "@/lib/client";
+import { useProviderReadiness } from "@/lib/readiness";
 import { useDeckStore } from "@/lib/store";
 import { fetchBootstrap, RunnerClient } from "@/lib/ws";
+
+/** Probes every provider once the socket is authed. Renders nothing. */
+function ProviderReadinessProbe() {
+  useProviderReadiness();
+  return null;
+}
 
 export function App() {
   const bootstrap = useQuery({
@@ -64,6 +71,7 @@ export function App() {
 
   return (
     <ClientProvider value={client}>
+      <ProviderReadinessProbe />
       <div className="flex h-full flex-col bg-background">
         <TopBar onSettings={() => setSettings(true)} />
         <BypassBanner />

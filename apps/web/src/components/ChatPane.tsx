@@ -1,8 +1,10 @@
 import type { AgentEvent, StoredEvent } from "@purser-sh/protocol";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { DecisionCard } from "@/components/DecisionCard";
 import { BudgetDecisionCard, DiffCard, PermissionDecisionCard } from "@/components/DiffCard";
 import { EmptyStart } from "@/components/EmptyStart";
+import { ProviderBlockedCard, RemedyCard } from "@/components/ProviderBlockedCard";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { ToolRow, ThinkingRow } from "@/components/ToolRow";
 import { VoiceButton } from "@/components/VoiceButton";
@@ -10,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { useRunner } from "@/lib/client";
 import { formatUsdMicros } from "@/lib/money";
+import { isBlocked, useRecheckProvider } from "@/lib/readiness";
+import { useToastStore } from "@/lib/toast";
 import { selectedSession, sessionEvents, useDeckStore } from "@/lib/store";
 import { coachPrompt } from "@purser-sh/prompt-coach";
 import { TokenCountLabel } from "@/components/TokenCountLabel";
@@ -56,7 +60,12 @@ function buildRenderItems(events: StoredEvent[]): RenderItem[] {
   return items;
 }
 
-function EventView(props: { event: StoredEvent; sessionId: string; diffRef?: (node: HTMLDivElement | null) => void }) {
+function EventView(props: {
+  event: StoredEvent;
+  sessionId: string;
+  onRecheck?: () => void;
+  diffRef?: (node: HTMLDivElement | null) => void;
+}) {
   const client = useRunner();
   if (props.event.payload.kind === "user_message") {
     return (
@@ -103,10 +112,22 @@ function EventView(props: { event: StoredEvent; sessionId: string; diffRef?: (no
     );
   }
   if (agent.kind === "done") {
+    // A failed turn says nothing here: the error card above it is the whole report.
+    if (agent.status === "error" || agent.summary.length === 0) {
+      return null;
+    }
     return <p className="text-center text-[length:var(--text-xs)] text-muted-foreground">{agent.summary}</p>;
   }
   if (agent.kind === "error") {
-    return <p className="text-[length:var(--text-sm)] text-destructive">{agent.message}</p>;
+    const remedy = agent.remedy;
+    if (remedy !== null && remedy !== undefined) {
+      return <RemedyCard onRecheck={props.onRecheck} remedy={remedy} />;
+    }
+    return (
+      <DecisionCard actions={[]} severity="block" title={agent.message}>
+        {null}
+      </DecisionCard>
+    );
   }
   return null;
 }
@@ -120,6 +141,9 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
   const pending = useDeckStore((state) => state.pendingPermissions);
   const pendingBudgets = useDeckStore((state) => state.pendingBudgets);
   const configs = useDeckStore((state) => state.providerConfigs);
+  const healthByProvider = useDeckStore((state) => state.healthByProvider);
+  const recheckProvider = useRecheckProvider();
+  const pushToast = useToastStore((state) => state.push);
   const session = selectedSession(sessions, selectedSessionId);
   const [draft, setDraft] = useState("");
   const [focusDiff, setFocusDiff] = useState(0);
@@ -132,6 +156,8 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
   );
   const bottomRef = useRef<HTMLDivElement>(null);
   const providerLabel = configs.find((config) => config.providerId === session?.providerId)?.label ?? session?.providerId;
+  const health = session === undefined ? undefined : healthByProvider[session.providerId];
+  const blockedHealth = isBlocked(health) ? health : undefined;
 
   const pendingDiffs = useMemo(
     () => visible.filter((event) => event.payload.kind === "file_diff"),
@@ -177,11 +203,19 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
   }, [client, focusDiff, pendingDiffs, session]);
 
   async function send(text = draft.trim()) {
-    if (session === undefined || text.length === 0) {
+    if (session === undefined || text.length === 0 || blockedHealth !== undefined) {
       return;
     }
     setDraft("");
-    await client.request("send_message", { sessionId: session.id, text });
+    try {
+      await client.request("send_message", { sessionId: session.id, text });
+    } catch (error) {
+      // The runner refused the run. Restore the draft and re-probe so the
+      // reason lands on the card instead of vanishing.
+      setDraft(text);
+      recheckProvider(session.providerId);
+      pushToast(error instanceof Error ? error.message : "The run could not be started.", "block");
+    }
   }
 
   function onSubmit(event: FormEvent) {
@@ -248,6 +282,7 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
                 }
                 event={item.event}
                 key={item.event.id}
+                onRecheck={() => recheckProvider(session.providerId)}
                 sessionId={session.id}
               />
             );
@@ -293,6 +328,22 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
 
       <form className="border-t border-border p-4" onSubmit={onSubmit}>
         <div className="mx-auto w-full min-w-[640px] max-w-[900px]">
+          {/* Known-broken providers are stopped here, before a prompt is sent. */}
+          {blockedHealth !== undefined ? (
+            <div className="mb-3">
+              {blockedHealth.remedy !== null ? (
+                <RemedyCard onRecheck={() => recheckProvider(session.providerId)} remedy={blockedHealth.remedy} />
+              ) : (
+                <ProviderBlockedCard
+                  command={null}
+                  docsUrl={null}
+                  fix="Pick another provider in the top bar."
+                  onRecheck={() => recheckProvider(session.providerId)}
+                  title={blockedHealth.detail}
+                />
+              )}
+            </div>
+          ) : null}
           <Textarea
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
@@ -300,20 +351,26 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
             value={draft}
           />
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {estimate !== null && estimate.savedTokens > 0 ? (
+            {estimate !== null ? (
               <div className="min-w-0 flex-1 text-[length:var(--text-2xs)] text-muted-foreground">
-                <TokenCountLabel count={estimate.tokens} /> → <TokenCountLabel className="text-pass" count={estimate.compactTokens} /> if
-                shortened
-                <Button
-                  className="ml-2 h-6 px-2"
-                  onClick={() => setDraft(estimate.compactText)}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  <Sparkles className="h-3 w-3" />
-                  Use shorter
-                </Button>
+                <TokenCountLabel count={estimate.tokens} />
+                <span className="mx-1 text-muted-foreground/70">this prompt</span>
+                {estimate.savedTokens > 0 ? (
+                  <>
+                    <span className="text-muted-foreground/70">·</span>{" "}
+                    <TokenCountLabel className="text-pass" count={estimate.compactTokens} /> if shortened
+                    <Button
+                      className="ml-2 h-6 px-2"
+                      onClick={() => setDraft(estimate.compactText)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      Use shorter
+                    </Button>
+                  </>
+                ) : null}
               </div>
             ) : (
               <p className="min-w-0 flex-1 text-[length:var(--text-2xs)] text-muted-foreground">
@@ -321,7 +378,10 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
               </p>
             )}
             <VoiceButton compact />
-            <Button disabled={session.status === "running" || draft.trim().length === 0} type="submit">
+            <Button
+              disabled={session.status === "running" || draft.trim().length === 0 || blockedHealth !== undefined}
+              type="submit"
+            >
               <ArrowUp className="h-4 w-4" />
               Send
             </Button>

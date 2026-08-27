@@ -113,6 +113,7 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
       role: "system",
       content: [
         "You are a coding agent. Use tools to inspect and edit the workspace.",
+        "When the user asks you to change files, you must call write_file or apply_patch — reading or searching alone is not enough.",
         "Never escape the workspace root.",
         input.extraSystemPrompt ?? "",
       ]

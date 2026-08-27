@@ -14,6 +14,11 @@ function formatUnknown(value: unknown): string {
   }
 }
 
+function failureHint(output: unknown): string {
+  const text = formatUnknown(output).split("\n")[0]?.trim() ?? "tool failed";
+  return text.length > 96 ? `${text.slice(0, 96)}…` : text;
+}
+
 export function ToolRow(props: {
   call?: Extract<AgentEvent, { kind: "tool_call" }>;
   result?: Extract<AgentEvent, { kind: "tool_result" }>;
@@ -33,7 +38,11 @@ export function ToolRow(props: {
       >
         <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform", open ? "rotate-90" : "")} />
         <span className="text-foreground">{name}</span>
-        {summary.length > 0 ? <span className="truncate">{summary}</span> : null}
+        {ok === false && props.result ? (
+          <span className="truncate text-block">{failureHint(props.result.output)}</span>
+        ) : summary.length > 0 ? (
+          <span className="truncate">{summary}</span>
+        ) : null}
         {ms !== undefined ? <span className="ml-auto tabular-nums">{ms}ms</span> : null}
         {ok !== undefined ? (
           ok ? (

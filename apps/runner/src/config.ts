@@ -81,13 +81,15 @@ export function loadOrCreateConfig(): RunnerConfig {
   mkdirSync(logsDir(), { recursive: true, mode: 0o700 });
 
   const path = configPath();
+  const envPort = readEnvPort(process.env.PURSER_PORT);
   if (!existsSync(path)) {
+    const port = envPort ?? DEFAULT_PORT;
     const created: RunnerConfig = {
       token: generateToken(),
-      port: DEFAULT_PORT,
+      port,
       allowedRoots: [homedir()],
       allowedOrigins: [...DEFAULT_UI_ORIGINS],
-      allowedHosts: [`127.0.0.1:${DEFAULT_PORT}`, `localhost:${DEFAULT_PORT}`],
+      allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
       bypassTtlMs: DEFAULT_BYPASS_TTL_MS,
       bypassMaxRuns: DEFAULT_BYPASS_MAX_RUNS,
     };
@@ -95,5 +97,18 @@ export function loadOrCreateConfig(): RunnerConfig {
     return created;
   }
 
-  return RunnerConfigSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  const loaded = RunnerConfigSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  // PURSER_PORT wins over the file so a conflict can be unblocked without editing config.
+  return envPort === null ? loaded : { ...loaded, port: envPort };
+}
+
+function readEnvPort(raw: string | undefined): number | null {
+  if (raw === undefined || raw.trim().length === 0) {
+    return null;
+  }
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`PURSER_PORT must be an integer 1–65535, got ${JSON.stringify(raw)}`);
+  }
+  return port;
 }

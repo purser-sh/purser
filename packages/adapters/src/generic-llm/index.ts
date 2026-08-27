@@ -1,6 +1,17 @@
-import type { AgentAdapter, AdapterConfig } from "../types.ts";
+import type { AgentAdapter, AdapterConfig, HealthResult } from "../types.ts";
 import type { CostModel } from "@purser-sh/protocol";
 import { runToolLoop } from "./loop.ts";
+import {
+  apiKeyMissing,
+  apiKeyRejected,
+  API_KEY_ENV_VARS,
+  blocked,
+  blockedRunEvents,
+  endpointRefused,
+  endpointUnreachable,
+  ollamaUnreachable,
+  ready,
+} from "../readiness.ts";
 
 async function fetchModels(baseUrl: string, apiKey: string | null): Promise<{ id: string; label: string }[]> {
   const headers: Record<string, string> = {};
@@ -21,6 +32,49 @@ async function fetchModels(baseUrl: string, apiKey: string | null): Promise<{ id
     .map((id) => ({ id, label: id }));
 }
 
+/** Local endpoints authenticate by being local; the hosted ones need a key. */
+function keyRequired(providerId: string): boolean {
+  return providerId !== "ollama" && providerId !== "echo";
+}
+
+function keyReadiness(providerId: string, label: string, apiKey: string | null): HealthResult | null {
+  if (!keyRequired(providerId) || (apiKey !== null && apiKey.length > 0)) {
+    return null;
+  }
+  return blocked("api_key_missing", apiKeyMissing(label, API_KEY_ENV_VARS[providerId] ?? null));
+}
+
+async function probeEndpoint(
+  providerId: string,
+  label: string,
+  baseUrl: string,
+  apiKey: string | null,
+): Promise<HealthResult> {
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers.authorization = `Bearer ${apiKey}`;
+  }
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
+      headers,
+      signal: AbortSignal.timeout(2000),
+    });
+    if (response.status === 401 || response.status === 403) {
+      return blocked("api_key_missing", apiKeyRejected(label));
+    }
+    if (!response.ok) {
+      return blocked("unreachable", endpointRefused(label, response.status));
+    }
+    return ready(`${label} answered at ${baseUrl}.`);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "no response";
+    if (providerId === "ollama") {
+      return blocked("unreachable", ollamaUnreachable(baseUrl));
+    }
+    return blocked("unreachable", endpointUnreachable(label, baseUrl, detail));
+  }
+}
+
 export function createGenericLlmAdapter(input: {
   id: string;
   label: string;
@@ -35,29 +89,11 @@ export function createGenericLlmAdapter(input: {
     costModel: input.costModel,
     async checkHealth(config?: AdapterConfig) {
       const baseUrl = config?.baseUrl ?? input.defaultBaseUrl;
-      const apiKey = config?.apiKey ?? null;
-      if (input.id !== "ollama" && input.id !== "echo" && apiKey === null) {
-        return { ok: false, detail: `${input.label} needs an API key in Settings or the matching env var.` };
+      const missingKey = keyReadiness(input.id, input.label, config?.apiKey ?? null);
+      if (missingKey !== null) {
+        return missingKey;
       }
-      try {
-        const headers: Record<string, string> = {};
-        if (apiKey) {
-          headers.authorization = `Bearer ${apiKey}`;
-        }
-        const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
-          headers,
-          signal: AbortSignal.timeout(2000),
-        });
-        if (!response.ok) {
-          return { ok: false, detail: `${input.label} returned HTTP ${response.status}` };
-        }
-        return { ok: true, detail: `${input.label} is reachable at ${baseUrl}` };
-      } catch (error) {
-        return {
-          ok: false,
-          detail: `${input.label} is not reachable at ${baseUrl}: ${error instanceof Error ? error.message : "error"}`,
-        };
-      }
+      return probeEndpoint(input.id, input.label, baseUrl, config?.apiKey ?? null);
     },
     async listModels(config?: AdapterConfig) {
       try {
@@ -73,6 +109,11 @@ export function createGenericLlmAdapter(input: {
         apiKey: runInput.config?.apiKey ?? null,
         settings: runInput.config?.settings ?? {},
       };
+      const missingKey = keyReadiness(input.id, input.label, config.apiKey);
+      if (missingKey !== null) {
+        yield* blockedRunEvents(missingKey);
+        return;
+      }
       yield* runToolLoop({ ...runInput, config, allowFiles: input.allowFiles });
     },
   };

@@ -1,6 +1,7 @@
-import type { AgentEvent } from "@purser-sh/protocol";
+import { modelChoices, type AgentEvent } from "@purser-sh/protocol";
 import type { AgentAdapter, RunInput } from "./types.ts";
 import { countTokens } from "@purser-sh/pricing";
+import { ready } from "./readiness.ts";
 
 function assertNotAborted(signal: AbortSignal): void {
   if (signal.aborted) {
@@ -16,11 +17,11 @@ export const echoAdapter: AgentAdapter = {
   costModel: "local",
 
   async checkHealth() {
-    return { ok: true, detail: "echo is always healthy" };
+    return ready("Echo runs locally and needs nothing installed.");
   },
 
   async listModels() {
-    return [{ id: "echo-v1", label: "Echo v1" }];
+    return modelChoices("echo");
   },
 
   async *run(input: RunInput): AsyncIterable<AgentEvent> {

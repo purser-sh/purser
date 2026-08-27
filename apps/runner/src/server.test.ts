@@ -116,7 +116,7 @@ describe("runner websocket", () => {
       JSON.stringify({
         id: "msg1",
         type: "send_message",
-        payload: { sessionId: createdSession.payload.id, text: "hello deck" },
+        payload: { sessionId: createdSession.payload.session.id, text: "hello deck" },
       }),
     );
     const started = await inbox.wait((message) => message.id === "msg1");
@@ -132,6 +132,84 @@ describe("runner websocket", () => {
     expect(state.payload.events.some((event) => event.kind === "user_message")).toBe(true);
     expect(state.payload.events.some((event) => event.kind === "text")).toBe(true);
     expect(state.payload.events.some((event) => event.kind === "done")).toBe(true);
+
+    ws.terminate();
+    await server.close();
+  }, 20_000);
+
+  test("switching provider re-resolves the model instead of carrying it over", async () => {
+    const workspacePath = mkdtempSync(join(process.cwd(), ".tmp-ws-"));
+    const { server } = await boot();
+    const ws = connect(server.port, { Authorization: `Bearer ${TOKEN}` });
+    await new Promise<void>((resolve, reject) => {
+      ws.once("open", () => resolve());
+      ws.once("error", reject);
+      setTimeout(() => reject(new Error("websocket open timeout")), 3000);
+    });
+    const inbox = inboxOf(ws);
+    ws.send(
+      JSON.stringify({
+        id: "hello",
+        type: "hello",
+        payload: { token: TOKEN, clientVersion: "test", protocolVersion: PROTOCOL_VERSION },
+      }),
+    );
+    await inbox.wait((message) => message.id === "hello");
+
+    ws.send(JSON.stringify({ id: "ws1", type: "create_workspace", payload: { name: "Demo", absPath: workspacePath } }));
+    const createdWs = await inbox.wait((message) => message.id === "ws1");
+    if (createdWs.type !== "workspace_created") {
+      throw new Error("expected workspace");
+    }
+    ws.send(
+      JSON.stringify({
+        id: "ses1",
+        type: "create_session",
+        payload: {
+          workspaceId: createdWs.payload.id,
+          providerId: "echo",
+          modelId: "echo-v1",
+          permissionMode: "ask",
+        },
+      }),
+    );
+    const created = await inbox.wait((message) => message.id === "ses1");
+    if (created.type !== "session_created") {
+      throw new Error("expected session");
+    }
+    expect(created.payload.session.modelId).toBe("echo-v1");
+
+    // The reported reproduction: switch provider, send no model id.
+    ws.send(
+      JSON.stringify({
+        id: "prov1",
+        type: "set_session_provider",
+        payload: { sessionId: created.payload.session.id, providerId: "claude_code", permissionMode: "ask" },
+      }),
+    );
+    const switched = await inbox.wait((message) => message.id === "prov1");
+    if (switched.type !== "state") {
+      throw new Error("expected state");
+    }
+    const session = switched.payload.sessions.find((item) => item.id === created.payload.session.id);
+    expect(session?.providerId).toBe("claude_code");
+    expect(session?.modelId).toBe("sonnet");
+    expect(session?.modelId).not.toBe("echo-v1");
+
+    // An explicit pair that cannot exist is refused rather than stored.
+    ws.send(
+      JSON.stringify({
+        id: "prov2",
+        type: "set_session_provider",
+        payload: { sessionId: created.payload.session.id, providerId: "claude_code", modelId: "echo-v1", permissionMode: "ask" },
+      }),
+    );
+    const refused = await inbox.wait((message) => message.id === "prov2");
+    expect(refused.type).toBe("error");
+    if (refused.type === "error") {
+      expect(refused.payload.code).toBe("model");
+      expect(refused.payload.message).toContain("does not belong to provider claude_code");
+    }
 
     ws.terminate();
     await server.close();

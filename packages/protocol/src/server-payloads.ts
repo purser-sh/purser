@@ -23,6 +23,7 @@ import {
   TokenCountSchema,
 } from "./enums.ts";
 import { PROTOCOL_VERSION } from "./constants.ts";
+import { ReadinessStateSchema, RemedySchema } from "./readiness.ts";
 import { AbsolutePathSchema, IdSchema, IsoDateTimeSchema } from "./primitives.ts";
 
 export const StatePayloadSchema = z
@@ -45,7 +46,12 @@ export type StatePayload = z.infer<typeof StatePayloadSchema>;
 export const WorkspaceCreatedPayloadSchema = WorkspaceSchema;
 export type WorkspaceCreatedPayload = z.infer<typeof WorkspaceCreatedPayloadSchema>;
 
-export const SessionCreatedPayloadSchema = SessionSchema;
+export const SessionCreatedPayloadSchema = z
+  .object({
+    session: SessionSchema,
+    notice: z.string().min(1).optional(),
+  })
+  .strict();
 export type SessionCreatedPayload = z.infer<typeof SessionCreatedPayloadSchema>;
 
 export const RunStartedPayloadSchema = z
@@ -100,6 +106,8 @@ export const ProviderHealthPayloadSchema = z
     providerId: z.string().min(1),
     ok: z.boolean(),
     detail: z.string(),
+    state: ReadinessStateSchema,
+    remedy: RemedySchema.nullable(),
   })
   .strict();
 export type ProviderHealthPayload = z.infer<typeof ProviderHealthPayloadSchema>;
@@ -151,6 +159,7 @@ export const ErrorPayloadSchema = z
     message: z.string().min(1),
     code: z.string().min(1).optional(),
     fatal: z.boolean().optional(),
+    remedy: RemedySchema.nullable().optional(),
   })
   .strict();
 export type ErrorPayload = z.infer<typeof ErrorPayloadSchema>;

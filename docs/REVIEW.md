@@ -285,7 +285,7 @@ Every frame: `{ id, type, payload }`. Zod `.strict()` — extra keys fail. Proto
 | `cancel_run` | Abort |
 | `permission_response` | Allow / deny a mutating tool |
 | `diff_response` | Approve / reject a file patch |
-| `list_models` / `check_provider_health` | Right panel |
+| `list_models` / `check_provider_health` | Right panel; readiness is probed for every provider at startup |
 | `voice_start` / `voice_audio_chunk` / `voice_stop` | Mic |
 | `tts_speak` / `tts_stop` | Speech out |
 | `upsert_provider_config` | Labels, base URL, API key (key stripped to secrets file) |
@@ -306,7 +306,7 @@ Every frame: `{ id, type, payload }`. Zod `.strict()` — extra keys fail. Proto
 | `workspace_created` / `session_created` | ACKs |
 | `run_started` / `agent_event` / `run_finished` | Streaming run |
 | `permission_request` | Human-in-the-loop |
-| `models` / `provider_health` / `fs_listing` / `file_content` | Lookups |
+| `models` / `provider_health` / `fs_listing` / `file_content` | Lookups. `provider_health` carries `state` and a `remedy` (title, fix, exact command) |
 | `transcript_partial` / `transcript_final` / `tts_audio_chunk` | Voice |
 | `relay_status` | Pairing |
 | `prompt_estimate` | Coach payload |
@@ -356,7 +356,7 @@ The runner looks up `providerId` in `apps/runner/src/registry.ts`.
 
 Mutating tools require a permission card unless the session is `auto_edit` or `bypass` (bypass needs typing `bypass` plus a checkbox, then expires after 30 minutes or 10 runs). Diffs are approve/reject. Cancel aborts the active run.
 
-If the workspace is a git repo, a session can get a **worktree** so parallel agents do not stomp the same checkout.
+If the workspace is a git repo, a session gets an **isolated worktree at HEAD** under `~/.purser/worktrees/` so parallel agents do not stomp the same checkout. The agent does not see uncommitted files in the folder you opened; **Approve** on a diff copies that file from the worktree into your open folder. Non-git folders run in place with no worktree.
 
 ---
 

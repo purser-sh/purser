@@ -15,7 +15,9 @@ describe("echoAdapter", () => {
     expect(echoAdapter.id).toBe("echo");
     expect(await echoAdapter.checkHealth()).toEqual({
       ok: true,
-      detail: "echo is always healthy",
+      detail: "Echo runs locally and needs nothing installed.",
+      state: "ready",
+      remedy: null,
     });
     expect(await echoAdapter.listModels()).toEqual([{ id: "echo-v1", label: "Echo v1" }]);
   });

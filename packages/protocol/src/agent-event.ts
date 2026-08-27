@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RemedySchema } from "./readiness.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -107,6 +108,8 @@ export const AgentEventErrorSchema = z
     kind: z.literal("error"),
     message: z.string().min(1),
     fatal: z.boolean(),
+    /** Optional so error rows written before readiness landed still parse. */
+    remedy: RemedySchema.nullable().optional(),
   })
   .strict();
 

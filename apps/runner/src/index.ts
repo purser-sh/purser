@@ -1,8 +1,11 @@
 import { openSqliteDatabase } from "@purser-sh/db";
 import { printVerify, verifyAudit } from "./audit.ts";
 import { purserDir, configPath, loadOrCreateConfig } from "./config.ts";
+import { formatListenError } from "./listen-error.ts";
 import { startServer, type AppContext } from "./server.ts";
 import { hasEmbeddedUi, resolveUiDir } from "./ui-serve.ts";
+
+import { augmentProcessPath } from "@purser-sh/adapters";
 
 function userArgv(): string[] {
   const standalone = typeof Bun !== "undefined" && Bun.isStandaloneExecutable === true;
@@ -40,6 +43,7 @@ if (args[0] === "audit" && args[1] === "verify") {
 }
 
 const config = loadOrCreateConfig();
+augmentProcessPath();
 const db = openSqliteDatabase(process.env.PURSER_DATABASE_URL);
 
 const ctx: AppContext = {
@@ -55,7 +59,10 @@ const ctx: AppContext = {
   uiDir: resolveUiDir(import.meta.dir),
 };
 
-const { port } = await startServer(ctx);
+const { port } = await startServer(ctx).catch((error: unknown) => {
+  console.error(formatListenError(error, ctx.config.port));
+  process.exit(1);
+});
 const uiUrl = `http://127.0.0.1:${port}/`;
 
 console.log(`Purser runner listening on ws://127.0.0.1:${port}`);

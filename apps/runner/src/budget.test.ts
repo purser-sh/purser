@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  appendLedgerEntry,
   insertRun,
   insertSession,
   insertWorkspace,
@@ -29,31 +30,64 @@ async function setup() {
 }
 
 describe("budget governor", () => {
-  test("hard_stop pre-run when the daily token cap is already spent", async () => {
+  test("pre-run hard_stop refuses when the daily cap is already spent (before any run starts)", async () => {
     const { db, session } = await setup();
     upsertBudget(db, {
       scope: "global",
       scopeId: null,
       window: "day",
       limitUsdMicros: null,
-      limitTokens: 5,
+      limitTokens: 100,
       action: "hard_stop",
       enabled: true,
     });
     const run = insertRun(db, session.id);
     recordUsageEvent(db, session, run.id, {
       kind: "usage",
-      inputTokens: 5,
+      inputTokens: 5264,
       outputTokens: 0,
       cacheReadTokens: null,
       cacheWriteTokens: null,
-      source: "estimated",
+      source: "provider_usage",
     });
-    const gate = preRunGate(db, session, new Date(run.startedAt));
+    const gate = preRunGate(db, session);
     expect(gate.kind).toBe("hard_stop");
+    if (gate.kind === "hard_stop") {
+      expect(gate.status.spent).toBeGreaterThanOrEqual(100);
+      expect(gate.status.window).toBe("day");
+    }
   });
 
-  test("in-flight hard_stop when the first usage already exceeds the cap", async () => {
+  test("pre-run hard_stop counts ledger rows even when the runs table has no matching row", async () => {
+    const { db, session } = await setup();
+    upsertBudget(db, {
+      scope: "global",
+      scopeId: null,
+      window: "day",
+      limitUsdMicros: null,
+      limitTokens: 100,
+      action: "hard_stop",
+      enabled: true,
+    });
+    // Orphaned ledger row: spend the UI sees as "today" but the old runs-table path missed.
+    appendLedgerEntry(db, {
+      workspaceId: session.workspaceId,
+      sessionId: session.id,
+      runId: "run_orphan_only_in_ledger",
+      providerId: "echo",
+      model: "echo-v1",
+      costModel: "local",
+      inputTokens: 5264,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsdMicros: null,
+      source: "provider_usage",
+    });
+    expect(preRunGate(db, session).kind).toBe("hard_stop");
+  });
+
+  test("in-flight hard_stop when usage in the current run exceeds the cap", async () => {
     const { db, session } = await setup();
     upsertBudget(db, {
       scope: "session",

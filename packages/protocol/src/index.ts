@@ -57,6 +57,24 @@ export {
 } from "./enums.ts";
 
 export {
+  PROVIDER_MODELS,
+  modelChoices,
+  defaultModelId,
+  modelOwners,
+  isModelCoherent,
+  resolveModelId,
+  describeIncoherentPair,
+  type ProviderModels,
+} from "./models.ts";
+
+export {
+  ReadinessStateSchema,
+  RemedySchema,
+  type ReadinessState,
+  type Remedy,
+} from "./readiness.ts";
+
+export {
   IsoDateTimeSchema,
   IdSchema,
   AbsolutePathSchema,

@@ -1,7 +1,9 @@
+import { modelChoices } from "@purser-sh/protocol";
 import type { AgentAdapter, RunInput } from "../types.ts";
-import { MissingCliError, spawnJsonl } from "./spawn-jsonl.ts";
+import { spawnJsonl } from "./spawn-jsonl.ts";
 import { mapJsonlEvent } from "./map-jsonl.ts";
 import { which } from "./which.ts";
+import { blockedRunEvents, cliReadiness } from "../readiness.ts";
 
 function approvalFlag(mode: RunInput["permissionMode"]): string[] {
   if (mode === "bypass") {
@@ -19,22 +21,16 @@ export const geminiCliAdapter: AgentAdapter = {
   kind: "cli",
   costModel: "subscription",
   async checkHealth() {
-    const path = which("gemini");
-    if (path === null) {
-      return { ok: false, detail: "gemini CLI is not installed or not on PATH." };
-    }
-    return { ok: true, detail: `gemini found at ${path}` };
+    return cliReadiness("gemini_cli", "gemini", which("gemini"));
   },
   async listModels() {
-    return [
-      { id: "auto", label: "auto" },
-      { id: "gemini-2.5-pro", label: "gemini-2.5-pro" },
-      { id: "gemini-2.5-flash", label: "gemini-2.5-flash" },
-    ];
+    return modelChoices("gemini_cli");
   },
   async *run(input) {
-    if (which("gemini") === null) {
-      throw new MissingCliError("gemini");
+    const health = cliReadiness("gemini_cli", "gemini", which("gemini"));
+    if (!health.ok) {
+      yield* blockedRunEvents(health);
+      return;
     }
     const args = ["--prompt", input.prompt, "--output-format", "stream-json", ...approvalFlag(input.permissionMode)];
     if (input.modelId) {

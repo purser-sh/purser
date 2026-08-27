@@ -5,6 +5,7 @@ import { RunMeter } from "@/components/RunMeter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRunner } from "@/lib/client";
+import { isBlocked, shortReason } from "@/lib/readiness";
 import { cycleTheme, readThemePreference, themeLabel, type ThemePreference } from "@/lib/theme";
 import { PERMISSION_MODES, selectedSession, useDeckStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ export function TopBar(props: { onSettings: () => void }) {
   const modelsByProvider = useDeckStore((state) => state.modelsByProvider);
   const costModelByProvider = useDeckStore((state) => state.costModelByProvider);
   const lastSpendBySession = useDeckStore((state) => state.lastSpendBySession);
+  const healthByProvider = useDeckStore((state) => state.healthByProvider);
   const connection = useDeckStore((state) => state.connection);
   const setRightPanelTab = useDeckStore((state) => state.setRightPanelTab);
   const session = selectedSession(sessions, selectedSessionId);
@@ -62,7 +64,18 @@ export function TopBar(props: { onSettings: () => void }) {
     void client.request("list_models", { providerId: session.providerId });
   }, [client, session?.providerId, session]);
 
-  const models = session ? (modelsByProvider[session.providerId] ?? []) : [];
+  /*
+   * `undefined` means list_models has not answered yet, which is not the same
+   * as a provider that answered with nothing. Only a loaded list can prove a
+   * stored model id is unresolvable.
+   */
+  const loadedModels = session ? modelsByProvider[session.providerId] : undefined;
+  const models = loadedModels ?? [];
+  const storedModelId = session?.modelId ?? null;
+  const unresolvableModelId =
+    loadedModels !== undefined && storedModelId !== null && !models.some((model) => model.id === storedModelId)
+      ? storedModelId
+      : null;
   const spend = session ? lastSpendBySession[session.id] : undefined;
   const costModel = session ? (costModelByProvider[session.providerId] ?? "local") : "local";
 
@@ -116,23 +129,70 @@ export function TopBar(props: { onSettings: () => void }) {
 
       {session !== undefined ? (
         <div className="mx-auto flex min-w-0 flex-wrap items-center justify-center gap-2">
+          {/*
+            Unready providers stay visible but unselectable, with the reason in
+            the label. The Setup tab carries the command that fixes it.
+          */}
           <select
-            className="max-w-[8rem] truncate rounded-[var(--radius-control)] border border-border bg-background px-2 py-1 text-[length:var(--text-xs)]"
+            className={cn(
+              "max-w-[8rem] truncate rounded-[var(--radius-control)] border bg-background px-2 py-1 text-[length:var(--text-xs)]",
+              isBlocked(healthByProvider[session.providerId]) ? "border-block text-block" : "border-border",
+            )}
             onChange={(event) => void setProvider(event.target.value)}
             value={session.providerId}
           >
-            {providerConfigs.map((config) => (
-              <option key={config.id} value={config.providerId}>
-                {config.label}
-              </option>
-            ))}
+            {providerConfigs.map((config) => {
+              const health = healthByProvider[config.providerId];
+              const blocked = isBlocked(health);
+              return (
+                <option
+                  disabled={blocked && config.providerId !== session.providerId}
+                  key={config.id}
+                  title={health?.detail}
+                  value={config.providerId}
+                >
+                  {config.label}
+                  {blocked && health !== undefined ? ` · ${shortReason(health)}` : ""}
+                </option>
+              );
+            })}
           </select>
           <span className="text-muted-foreground">·</span>
+          {/*
+            The stored value is rendered as-is and always has a matching option,
+            so the control can never show one model while the session holds
+            another. A value the provider does not offer is surfaced as an error,
+            never silently replaced by the first option's label.
+          */}
           <select
-            className="max-w-[10rem] truncate rounded-[var(--radius-control)] border border-border bg-background px-2 py-1 text-[length:var(--text-xs)]"
+            aria-invalid={unresolvableModelId !== null}
+            className={cn(
+              "max-w-[10rem] truncate rounded-[var(--radius-control)] border bg-background px-2 py-1 text-[length:var(--text-xs)]",
+              unresolvableModelId !== null ? "border-block text-block" : "border-border",
+            )}
             onChange={(event) => void setModel(event.target.value)}
-            value={session.modelId ?? models[0]?.id ?? ""}
+            title={
+              unresolvableModelId !== null
+                ? `${unresolvableModelId} is not a model of ${session.providerId}. Pick one of its models.`
+                : undefined
+            }
+            value={storedModelId ?? ""}
           >
+            {unresolvableModelId !== null ? (
+              <option disabled value={unresolvableModelId}>
+                invalid: {unresolvableModelId}
+              </option>
+            ) : null}
+            {unresolvableModelId === null && storedModelId !== null && loadedModels === undefined ? (
+              <option disabled value={storedModelId}>
+                {storedModelId}
+              </option>
+            ) : null}
+            {storedModelId === null ? (
+              <option disabled value="">
+                {loadedModels === undefined ? "loading models" : "select a model"}
+              </option>
+            ) : null}
             {models.map((model) => (
               <option key={model.id} value={model.id}>
                 {model.label}

@@ -1,7 +1,18 @@
+import { modelChoices } from "@purser-sh/protocol";
 import type { AgentAdapter, RunInput } from "../types.ts";
-import { MissingCliError, spawnJsonl } from "./spawn-jsonl.ts";
+import { spawnJsonl } from "./spawn-jsonl.ts";
 import { mapJsonlEvent } from "./map-jsonl.ts";
 import { which } from "./which.ts";
+import { blockedRunEvents, cliReadiness } from "../readiness.ts";
+
+/**
+ * Cursor ships both `cursor-agent` and a short `agent` symlink. Prefer the
+ * unambiguous name: `agent` collides with other CLIs (Grok) and is a first-run
+ * failure for the exact user we most want.
+ */
+export function resolveCursorCli(env: NodeJS.ProcessEnv = process.env): string | null {
+  return which("cursor-agent", env) ?? which("agent", env);
+}
 
 export const cursorAgentAdapter: AgentAdapter = {
   id: "cursor_agent",
@@ -9,24 +20,17 @@ export const cursorAgentAdapter: AgentAdapter = {
   kind: "cli",
   costModel: "subscription",
   async checkHealth() {
-    const path = which("agent");
-    if (path === null) {
-      return {
-        ok: false,
-        detail: "Cursor CLI (`agent`) is not installed. Install it from https://cursor.com/docs/cli/headless",
-      };
-    }
-    return { ok: true, detail: `agent found at ${path}` };
+    return cliReadiness("cursor_agent", "cursor-agent", resolveCursorCli());
   },
   async listModels() {
-    return [
-      { id: "auto", label: "auto" },
-      { id: "composer-2", label: "composer-2" },
-    ];
+    return modelChoices("cursor_agent");
   },
   async *run(input: RunInput) {
-    if (which("agent") === null) {
-      throw new MissingCliError("agent", "Cursor CLI (`agent`) is not installed.");
+    const cli = resolveCursorCli();
+    const health = cliReadiness("cursor_agent", "cursor-agent", cli);
+    if (!health.ok || cli === null) {
+      yield* blockedRunEvents(health);
+      return;
     }
     const args = [
       "-p",
@@ -49,7 +53,7 @@ export const cursorAgentAdapter: AgentAdapter = {
     args.push(input.prompt);
     yield { kind: "session_started", providerSessionId: input.providerSessionId ?? `cursor-${input.runId}` };
     let emittedDone = false;
-    for await (const event of spawnJsonl({ command: "agent", args, cwd: input.cwd, signal: input.signal })) {
+    for await (const event of spawnJsonl({ command: cli, args, cwd: input.cwd, signal: input.signal })) {
       const mapped = mapJsonlEvent(event);
       for (const item of mapped) {
         if (item.kind === "done") emittedDone = true;

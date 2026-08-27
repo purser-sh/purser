@@ -23,8 +23,10 @@ import {
   type AppDatabase,
 } from "@purser-sh/db";
 import {
+  describeIncoherentPair,
   parseClientMessage,
   PROTOCOL_VERSION,
+  resolveModelId,
   type ClientMessage,
   type ServerMessage,
   type Session,
@@ -42,8 +44,10 @@ import {
   SKIP_DIR_NAMES,
 } from "./paths.ts";
 import { getAdapter } from "./registry.ts";
+import { forgetProviderReadiness, providerReadiness, unavailableProvider } from "./readiness.ts";
+import { formatListenError } from "./listen-error.ts";
 import { executeRun, prepareRun } from "./session-run.ts";
-import { createSessionWorktree, keepPath, removeSessionWorktree, revertPath } from "./worktree.ts";
+import { createSessionWorktree, applyApprovedPath, keepPath, removeSessionWorktree, revertPath, worktreeSessionNotice } from "./worktree.ts";
 import { getSecret, setSecret, takeApiKeyFromSettings } from "./secrets.ts";
 import { connectRelay, type RelayHandle } from "./relay.ts";
 import { VoiceSession, toBase64Pcm } from "./voice-session.ts";
@@ -232,6 +236,26 @@ async function startRunAfterGate(
   replyId: string,
 ): Promise<void> {
   const refreshed = refreshBypass(ctx.db, existing);
+  const adapter = getAdapter(refreshed.providerId);
+  const readiness =
+    adapter === undefined
+      ? unavailableProvider(refreshed.providerId)
+      : await providerReadiness(adapter, adapterConfig(ctx, adapter.id));
+  if (!readiness.ok) {
+    // The prompt is not stored and no run is created: a provider we know will
+    // fail never gets one.
+    broadcast(ctx, { type: "provider_health", payload: readiness });
+    broadcast(ctx, {
+      id: replyId,
+      type: "error",
+      payload: {
+        message: readiness.detail,
+        code: `provider_${readiness.state}`,
+        remedy: readiness.remedy,
+      },
+    });
+    return;
+  }
   const extraUsdByBudget = new Map<string, number>();
   const preController = new AbortController();
   const gate = withLedgerLock(ctx.db, () => preRunGate(ctx.db, refreshed));
@@ -308,7 +332,11 @@ async function startRunAfterGate(
     broadcast: (payload) => broadcast(ctx, payload),
     onSpendUpdate: (payload, terminal) => {
       broadcast(ctx, { type: "spend_update", payload });
-      void terminal;
+      if (terminal) {
+        // Today / This month live in state.spendSummary; refresh so they cannot
+        // disagree with This run after the ledger write.
+        broadcast(ctx, { type: "state", payload: loadState(ctx.db) });
+      }
     },
     askBudget: (request) => askBudgetDecision(ctx, controller, { ...request, runId: run.id, sessionId: run.sessionId }),
     askPermission: (request) =>
@@ -401,7 +429,7 @@ async function handleUtterance(ctx: AppContext, text: string): Promise<void> {
         workspaceId: workspace.id,
         title: "Voice session",
         providerId: session?.providerId ?? "echo",
-        modelId: session?.modelId ?? null,
+        modelId: resolveModelId(session?.providerId ?? "echo", session?.modelId ?? null),
         permissionMode: "ask",
       });
       broadcast(ctx, { type: "state", payload: loadState(ctx.db) });
@@ -409,7 +437,10 @@ async function handleUtterance(ctx: AppContext, text: string): Promise<void> {
     return;
   }
   if (command.kind === "switch_provider" && session) {
-    updateSession(ctx.db, session.id, { providerId: command.providerId });
+    updateSession(ctx.db, session.id, {
+      providerId: command.providerId,
+      modelId: resolveModelId(command.providerId, null),
+    });
     broadcast(ctx, { type: "state", payload: loadState(ctx.db) });
     return;
   }
@@ -515,7 +546,7 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         workspaceId: workspace.id,
         title: message.payload.title ?? "New session",
         providerId: message.payload.providerId,
-        modelId: message.payload.modelId ?? null,
+        modelId: resolveModelId(message.payload.providerId, message.payload.modelId),
         permissionMode: message.payload.permissionMode === "bypass" ? "ask" : message.payload.permissionMode,
       });
       const withBypass =
@@ -525,7 +556,12 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       const worktreePath = createSessionWorktree(workspace.absPath, session.id);
       const withTree =
         worktreePath === null ? withBypass : (updateSession(ctx.db, session.id, { worktreePath }) ?? withBypass);
-      send(client, { id: message.id, type: "session_created", payload: withTree });
+      const notice = worktreePath === null ? undefined : worktreeSessionNotice(workspace.absPath) ?? undefined;
+      send(client, {
+        id: message.id,
+        type: "session_created",
+        payload: { session: withTree, notice },
+      });
       return;
     }
     case "rename_session": {
@@ -549,6 +585,19 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       if (getAdapter(message.payload.providerId) === undefined) {
         throw new HandlerError("provider", `provider ${message.payload.providerId} is not available yet`);
       }
+      const before = getSession(ctx.db, message.payload.sessionId);
+      if (before === undefined) {
+        throw new HandlerError("not_found", "session not found");
+      }
+      // A model id is only ever kept while the provider stays the same.
+      const carried = message.payload.providerId === before.providerId ? before.modelId : null;
+      const modelId = resolveModelId(message.payload.providerId, message.payload.modelId ?? carried);
+      if (message.payload.modelId !== undefined && modelId !== message.payload.modelId) {
+        throw new HandlerError(
+          "model",
+          `${describeIncoherentPair(message.payload.providerId, message.payload.modelId)} Pick one of its models.`,
+        );
+      }
       let session: Session | undefined;
       if (message.payload.permissionMode === "bypass") {
         session = enableBypass(ctx.db, message.payload.sessionId, ctx.config);
@@ -556,13 +605,13 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
           session =
             updateSession(ctx.db, message.payload.sessionId, {
               providerId: message.payload.providerId,
-              modelId: message.payload.modelId,
+              modelId,
             }) ?? session;
         }
       } else {
         session = updateSession(ctx.db, message.payload.sessionId, {
           providerId: message.payload.providerId,
-          modelId: message.payload.modelId,
+          modelId,
           permissionMode: message.payload.permissionMode,
           bypassExpiresAt: message.payload.permissionMode !== undefined ? null : undefined,
           bypassRunsRemaining: message.payload.permissionMode !== undefined ? null : undefined,
@@ -622,20 +671,12 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         send(client, {
           id: message.id,
           type: "provider_health",
-          payload: {
-            providerId: message.payload.providerId,
-            ok: false,
-            detail: "provider is not available yet",
-          },
+          payload: unavailableProvider(message.payload.providerId),
         });
         return;
       }
-      const health = await adapter.checkHealth(adapterConfig(ctx, adapter.id));
-      send(client, {
-        id: message.id,
-        type: "provider_health",
-        payload: { providerId: adapter.id, ok: health.ok, detail: health.detail },
-      });
+      const payload = await providerReadiness(adapter, adapterConfig(ctx, adapter.id), { fresh: true });
+      send(client, { id: message.id, type: "provider_health", payload });
       return;
     }
     case "diff_response": {
@@ -649,7 +690,9 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       }
       const cwd = session.worktreePath ?? workspace.absPath;
       const result = message.payload.approve
-        ? keepPath(cwd, message.payload.path)
+        ? session.worktreePath !== null
+          ? applyApprovedPath(session.worktreePath, workspace.absPath, message.payload.path)
+          : keepPath(cwd, message.payload.path)
         : revertPath(cwd, message.payload.path);
       if (!result.ok) {
         throw new HandlerError("git", result.detail);
@@ -688,6 +731,8 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         type: "provider_config",
         providerId: message.payload.providerId,
       });
+      // A new key or base URL can make an unready provider ready.
+      forgetProviderReadiness(message.payload.providerId);
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }
@@ -1085,7 +1130,9 @@ export function startServer(ctx: AppContext): Promise<{ port: number; close: () 
   });
 
   return new Promise((resolve, reject) => {
-    httpServer.on("error", reject);
+    httpServer.on("error", (error) => {
+      reject(new Error(formatListenError(error, ctx.config.port)));
+    });
     httpServer.listen(ctx.config.port, "127.0.0.1", () => {
       const address = httpServer.address();
       const port = typeof address === "object" && address !== null ? address.port : ctx.config.port;

@@ -6,6 +6,7 @@ import {
   parseEnvelope,
   parseServerMessage,
   ProtocolError,
+  PROTOCOL_VERSION,
   ServerMessageSchema,
 } from "./index.ts";
 import type { AgentEvent, ClientMessage, ClientMessageType, ServerMessage, ServerMessageType } from "./index.ts";
@@ -74,7 +75,7 @@ const clientMessages: ClientMessage[] = [
   {
     id: "c1",
     type: "hello",
-    payload: { token: "secret", clientVersion: "0.0.1", protocolVersion: 3 },
+    payload: { token: "secret", clientVersion: "0.0.1", protocolVersion: PROTOCOL_VERSION },
   },
   { id: "c2", type: "get_state", payload: {} },
   {
@@ -238,7 +239,7 @@ const emptyState = {
   settings: [{ key: "theme", value: "dark" }],
   folderWatches: [],
   budgets: [],
-  protocolVersion: 3 as const,
+  protocolVersion: PROTOCOL_VERSION,
   spendSummary: {
     generatedAt: NOW,
     today: { tokens: 0, costUsdMicros: null },
@@ -252,7 +253,7 @@ const emptyState = {
 const serverMessages: ServerMessage[] = [
   { id: "c1", type: "state", payload: emptyState },
   { id: "c3", type: "workspace_created", payload: workspace },
-  { id: "c7", type: "session_created", payload: session },
+  { id: "c7", type: "session_created", payload: { session } },
   { id: "s1", type: "run_started", payload: { runId: "run_1", sessionId: "ses_1" } },
   {
     id: "s2",
@@ -288,7 +289,7 @@ const serverMessages: ServerMessage[] = [
   {
     id: "s6",
     type: "provider_health",
-    payload: { providerId: "echo", ok: true, detail: "echo is always healthy" },
+    payload: { providerId: "echo", ok: true, detail: "echo is always healthy", state: "ready", remedy: null },
   },
   {
     id: "s7",

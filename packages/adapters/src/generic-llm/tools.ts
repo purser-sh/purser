@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { which } from "../cli/which.ts";
+import { formatMissingPath, resolveRequestedPath } from "../path-suggest.ts";
 import { listWorkspaceDir, readWorkspaceFile, SandboxError, writeWorkspaceFile } from "../sandbox.ts";
 
 export const MAX_TOOL_OUTPUT = 32_000;
@@ -115,6 +117,111 @@ function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+type RipgrepFailure =
+  | "empty_query"
+  | "rg_not_on_path"
+  | "rg_spawn_failed"
+  | "rg_regex_error"
+  | "rg_glob_error"
+  | "rg_exit_error";
+
+function ripgrepFailureMessage(cause: RipgrepFailure, detail: string): string {
+  switch (cause) {
+    case "empty_query":
+      return "Cause: empty query — ripgrep_search needs a non-empty query.";
+    case "rg_not_on_path":
+      return `Cause: rg not on PATH for the Purser process. ${detail}`;
+    case "rg_spawn_failed":
+      return `Cause: rg spawn failed. ${detail}`;
+    case "rg_regex_error":
+      return `Cause: invalid regex pattern. ${detail}`;
+    case "rg_glob_error":
+      return `Cause: invalid glob pattern. ${detail}`;
+    case "rg_exit_error":
+      return `Cause: rg exited with an error. ${detail}`;
+  }
+}
+
+function classifyRipgrepStderr(stderr: string): RipgrepFailure {
+  if (/regex parse error/i.test(stderr)) {
+    return "rg_regex_error";
+  }
+  if (/parsing glob/i.test(stderr)) {
+    return "rg_glob_error";
+  }
+  return "rg_exit_error";
+}
+
+/**
+ * Diagnose and run ripgrep. Exit code 1 means "no matches" and is success;
+ * missing binary and bad args must fail with a message that names the cause.
+ */
+function ripgrepSearch(
+  cwd: string,
+  query: string,
+  glob: string,
+): { ok: boolean; output: unknown; summary: string } {
+  if (query.length === 0) {
+    return {
+      ok: false,
+      output: ripgrepFailureMessage("empty_query", ""),
+      summary: "Cause: empty query",
+    };
+  }
+  const rg = which("rg");
+  if (rg === null) {
+    const pathHint = (process.env.PATH ?? "").split(":").slice(0, 4).join(":");
+    return {
+      ok: false,
+      output: ripgrepFailureMessage(
+        "rg_not_on_path",
+        `Install ripgrep (https://github.com/BurntSushi/ripgrep) or restart Purser from a shell where \`command -v rg\` succeeds. PATH starts with: ${pathHint || "(empty)"}`,
+      ),
+      summary: "Cause: rg not on PATH",
+    };
+  }
+  const args = ["--color", "never", "-n"];
+  if (glob.length > 0) {
+    args.push("-g", glob);
+  }
+  args.push("--", query, ".");
+  const result = spawnSync(rg, args, { cwd, encoding: "utf8", env: process.env });
+  if (result.error !== undefined) {
+    const code = "code" in result.error ? String((result.error as NodeJS.ErrnoException).code ?? "") : "";
+    if (code === "ENOENT") {
+      return {
+        ok: false,
+        output: ripgrepFailureMessage(
+          "rg_spawn_failed",
+          `Binary was resolved at ${rg} but could not be executed (${result.error.message}).`,
+        ),
+        summary: "Cause: rg spawn failed",
+      };
+    }
+    return {
+      ok: false,
+      output: ripgrepFailureMessage("rg_spawn_failed", result.error.message),
+      summary: "Cause: rg spawn failed",
+    };
+  }
+  // rg: 0 = matches, 1 = no matches, 2 = error (bad regex, I/O, …)
+  if (result.status === 0 || result.status === 1) {
+    const text = (result.stdout ?? "").trim();
+    return {
+      ok: true,
+      output: text.length > 0 ? cap(text) : "No matches.",
+      summary: `searched ${query}`,
+    };
+  }
+  const detail = (result.stderr || result.stdout || `exit ${result.status}`).trim();
+  const cause = classifyRipgrepStderr(detail);
+  return {
+    ok: false,
+    output: ripgrepFailureMessage(cause, detail),
+    summary: `Cause: ${cause === "rg_regex_error" ? "invalid regex" : cause === "rg_glob_error" ? "invalid glob" : "rg error"}`,
+  };
+}
+
 export async function executeTool(input: {
   name: string;
   args: Record<string, unknown>;
@@ -124,9 +231,16 @@ export async function executeTool(input: {
   try {
     switch (input.name as ToolName) {
       case "read_file": {
-        const path = str(input.args.path);
-        const output = readWorkspaceFile(input.cwd, path, MAX_FILE_BYTES);
-        return { ok: true, output, summary: `read ${path}` };
+        const asked = str(input.args.path);
+        const resolved = resolveRequestedPath(input.cwd, asked);
+        if (resolved.kind === "missing") {
+          const message = formatMissingPath(asked, resolved.suggestions);
+          return { ok: false, output: message, summary: message };
+        }
+        const output = readWorkspaceFile(input.cwd, resolved.path, MAX_FILE_BYTES);
+        const summary =
+          resolved.kind === "resolved" ? `read ${resolved.path} (resolved from ${asked})` : `read ${resolved.path}`;
+        return { ok: true, output, summary };
       }
       case "write_file": {
         const path = str(input.args.path);
@@ -136,39 +250,61 @@ export async function executeTool(input: {
       case "apply_patch": {
         const patchPath = join(tmpdir(), `purser-patch-${crypto.randomUUID()}.diff`);
         writeFileSync(patchPath, str(input.args.patch));
-        const result = spawnSync("git", ["apply", "--unsafe-paths", patchPath], {
+        const git = which("git");
+        if (git === null) {
+          return {
+            ok: false,
+            output: "git is not on PATH for the Purser process. Install git, then retry.",
+            summary: "git missing",
+          };
+        }
+        const result = spawnSync(git, ["apply", "--unsafe-paths", patchPath], {
           cwd: input.cwd,
           encoding: "utf8",
         });
         if (result.status !== 0) {
-          return { ok: false, output: result.stderr || result.stdout, summary: "apply patch failed" };
+          return {
+            ok: false,
+            output: result.stderr || result.stdout || "git apply failed",
+            summary: "apply patch failed",
+          };
         }
         return { ok: true, output: "patch applied", summary: "applied patch" };
       }
       case "list_dir": {
-        const path = str(input.args.path) || ".";
-        const output = listWorkspaceDir(input.cwd, path);
-        return { ok: true, output, summary: `listed ${path}` };
+        const asked = str(input.args.path) || ".";
+        try {
+          const output = listWorkspaceDir(input.cwd, asked);
+          return { ok: true, output, summary: `listed ${asked}` };
+        } catch (error) {
+          if (!(error instanceof SandboxError) && !(error instanceof Error)) {
+            throw error;
+          }
+          // ENOENT on a directory: offer near matches the same way as read_file.
+          const message = error.message;
+          if (/ENOENT|no such file/i.test(message)) {
+            const resolved = resolveRequestedPath(input.cwd, asked);
+            if (resolved.kind === "missing") {
+              const tip = formatMissingPath(asked, resolved.suggestions);
+              return { ok: false, output: tip, summary: tip };
+            }
+          }
+          throw error;
+        }
       }
       case "ripgrep_search": {
-        const query = str(input.args.query);
-        const glob = str(input.args.glob);
-        const args = ["--color", "never", "-n", query];
-        if (glob.length > 0) {
-          args.push("-g", glob);
-        }
-        args.push(".");
-        const result = spawnSync("rg", args, { cwd: input.cwd, encoding: "utf8" });
-        return { ok: true, output: cap(result.stdout || result.stderr), summary: `searched ${query}` };
+        return ripgrepSearch(input.cwd, str(input.args.query), str(input.args.glob));
       }
       case "run_bash": {
         const command = str(input.args.command);
-        const result = spawnSync("bash", ["-lc", command], {
+        const bash = which("bash") ?? "bash";
+        const result = spawnSync(bash, ["-lc", command], {
           cwd: input.cwd,
           encoding: "utf8",
           timeout: 30_000,
+          env: process.env,
         });
-        const output = cap(`${result.stdout}${result.stderr}`);
+        const output = cap(`${result.stdout ?? ""}${result.stderr ?? ""}`);
         return { ok: result.status === 0, output, summary: `ran ${command.slice(0, 80)}` };
       }
       case "web_search": {

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Install the Purser companion binary from a GitHub Release.
+#
+# NOT YET FUNCTIONAL for strangers: there is no public tagged release.
+# Use the README Quickstart (git clone && bun install && bun run dev) until v0.1.0.
 # Requires PURSER_REPO (owner/name) and a tagged release with SHA256SUMS.
 set -euo pipefail
 
@@ -8,7 +11,9 @@ VERSION="${PURSER_VERSION:-latest}"
 PREFIX="${PURSER_PREFIX:-/usr/local}"
 
 if [[ -z "${REPO}" ]]; then
-  echo "Set PURSER_REPO=owner/name to the GitHub repository that publishes releases." >&2
+  echo "install.sh is not ready for public use yet (no tagged release)." >&2
+  echo "Clone the repo and run: bun install && bun run dev" >&2
+  echo "When releases exist, set PURSER_REPO=owner/name and re-run." >&2
   exit 1
 fi
 

@@ -18,6 +18,7 @@ import type {
 } from "@purser-sh/protocol";
 import { PROTOCOL_VERSION } from "@purser-sh/protocol";
 import { create } from "zustand";
+import { useToastStore } from "@/lib/toast";
 
 export type ConnectionStatus = "idle" | "connecting" | "ready" | "error";
 export type RightPanelTab = "spend" | "files" | "setup";
@@ -55,15 +56,48 @@ type DeckStore = StatePayload & {
   clearBudget: (requestId: string) => void;
 };
 
+const SELECTION_KEY = "purser.selection";
+
+function readStoredSelection(): { workspaceId: string | null; sessionId: string | null } {
+  try {
+    const raw = localStorage.getItem(SELECTION_KEY);
+    if (raw === null) {
+      return { workspaceId: null, sessionId: null };
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { workspaceId: null, sessionId: null };
+    }
+    const record = parsed as Record<string, unknown>;
+    return {
+      workspaceId: typeof record.workspaceId === "string" ? record.workspaceId : null,
+      sessionId: typeof record.sessionId === "string" ? record.sessionId : null,
+    };
+  } catch {
+    return { workspaceId: null, sessionId: null };
+  }
+}
+
+function writeStoredSelection(workspaceId: string | null, sessionId: string | null): void {
+  try {
+    localStorage.setItem(SELECTION_KEY, JSON.stringify({ workspaceId, sessionId }));
+  } catch {
+    // private mode — selection just will not survive a reload
+  }
+}
+
 function selectAfterState(state: StatePayload, currentWorkspaceId: string | null, currentSessionId: string | null) {
+  const stored = readStoredSelection();
+  const preferredWorkspace = currentWorkspaceId ?? stored.workspaceId;
+  const preferredSession = currentSessionId ?? stored.sessionId;
   const workspaceId =
-    currentWorkspaceId !== null && state.workspaces.some((workspace) => workspace.id === currentWorkspaceId)
-      ? currentWorkspaceId
+    preferredWorkspace !== null && state.workspaces.some((workspace) => workspace.id === preferredWorkspace)
+      ? preferredWorkspace
       : (state.workspaces[0]?.id ?? null);
   const sessions = state.sessions.filter((session) => session.workspaceId === workspaceId);
   const sessionId =
-    currentSessionId !== null && sessions.some((session) => session.id === currentSessionId)
-      ? currentSessionId
+    preferredSession !== null && sessions.some((session) => session.id === preferredSession)
+      ? preferredSession
       : (sessions[0]?.id ?? null);
   return { workspaceId, sessionId };
 }
@@ -119,6 +153,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   setConnection: (status, detail) => set({ connection: status, connectionDetail: detail ?? null }),
   applyState: (state) => {
     const selected = selectAfterState(state, get().selectedWorkspaceId, get().selectedSessionId);
+    writeStoredSelection(selected.workspaceId, selected.sessionId);
     set({
       ...state,
       selectedWorkspaceId: selected.workspaceId,
@@ -127,9 +162,15 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   },
   selectWorkspace: (id) => {
     const sessions = get().sessions.filter((session) => session.workspaceId === id);
-    set({ selectedWorkspaceId: id, selectedSessionId: sessions[0]?.id ?? null });
+    const sessionId = sessions[0]?.id ?? null;
+    writeStoredSelection(id, sessionId);
+    set({ selectedWorkspaceId: id, selectedSessionId: sessionId });
   },
-  selectSession: (id) => set({ selectedSessionId: id }),
+  selectSession: (id) => {
+    const session = get().sessions.find((item) => item.id === id);
+    writeStoredSelection(session?.workspaceId ?? get().selectedWorkspaceId, id);
+    set({ selectedSessionId: id });
+  },
   applyServerMessage: (message) => {
     const current = get();
     if (message.type === "state") {
@@ -146,10 +187,15 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       return;
     }
     if (message.type === "session_created") {
+      const session = message.payload.session;
+      if (message.payload.notice !== undefined) {
+        useToastStore.getState().push(message.payload.notice, "block");
+      }
+      writeStoredSelection(session.workspaceId, session.id);
       set({
-        sessions: [...current.sessions.filter((item) => item.id !== message.payload.id), message.payload],
-        selectedWorkspaceId: message.payload.workspaceId,
-        selectedSessionId: message.payload.id,
+        sessions: [...current.sessions.filter((item) => item.id !== session.id), session],
+        selectedWorkspaceId: session.workspaceId,
+        selectedSessionId: session.id,
       });
       return;
     }

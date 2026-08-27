@@ -8,6 +8,8 @@ import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useRunner } from "@/lib/client";
 import { parseUsdToMicros } from "@/lib/money";
+import { isBlocked, shortReason, useRecheckProvider } from "@/lib/readiness";
+import { reportRows, sessionSpendRows } from "@/lib/session-spend";
 import {
   type RightPanelTab,
   selectedSession,
@@ -40,28 +42,21 @@ function parentPath(path: string): string | null {
   return path.split("/").slice(0, -1).join("/") || "/";
 }
 
-function reportRows(report: SpendReportPayload | undefined) {
-  if (report === undefined) {
-    return [];
-  }
-  return report.rows.map((row) => ({
-    key: row.groupKey,
-    tokens: row.inputTokens + row.outputTokens,
-    costUsdMicros: row.costUsdMicros,
-  }));
-}
-
 export function RightPanel(props: { onOpenWorkspace: () => void }) {
   const client = useRunner();
   const tab = useDeckStore((state) => state.rightPanelTab);
   const setTab = useDeckStore((state) => state.setRightPanelTab);
   const workspaces = useDeckStore((state) => state.workspaces);
   const sessions = useDeckStore((state) => state.sessions);
+  const events = useDeckStore((state) => state.events);
   const spendSummary = useDeckStore((state) => state.spendSummary);
   const budgets = useDeckStore((state) => state.budgets);
   const costModelByProvider = useDeckStore((state) => state.costModelByProvider);
   const lastSpendBySession = useDeckStore((state) => state.lastSpendBySession);
   const folderWatches = useDeckStore((state) => state.folderWatches);
+  const providerConfigs = useDeckStore((state) => state.providerConfigs);
+  const healthByProvider = useDeckStore((state) => state.healthByProvider);
+  const recheckProvider = useRecheckProvider();
   const lastSyncEvent = useDeckStore((state) => state.lastSyncEvent);
   const selectedWorkspaceId = useDeckStore((state) => state.selectedWorkspaceId);
   const selectedSessionId = useDeckStore((state) => state.selectedSessionId);
@@ -81,6 +76,12 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
   const [limitUsd, setLimitUsd] = useState("");
   const [budgetAction, setBudgetAction] = useState<"warn" | "ask" | "hard_stop">("hard_stop");
   const [budgetWindow, setBudgetWindow] = useState<"run" | "day" | "month">("day");
+
+  function recheckAll() {
+    for (const config of providerConfigs) {
+      recheckProvider(config.providerId);
+    }
+  }
 
   useEffect(() => {
     setListingPath(workspace?.absPath ?? null);
@@ -173,10 +174,7 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
             <RunMeter
               costModel={costModel}
               providerRows={reportRows(providerReport)}
-              sessionRows={reportRows(sessionReport).map((row) => ({
-                ...row,
-                key: sessions.find((item) => item.id === row.key)?.title ?? row.key,
-              }))}
+              sessionRows={sessionSpendRows(sessionReport, sessions, events)}
               spend={spend}
               spendSummary={spendSummary}
               variant="full"
@@ -328,6 +326,38 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
         {tab === "setup" ? (
           <div className="space-y-4">
             <section>
+              <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">Providers</h3>
+              <div className="space-y-1">
+                {providerConfigs.map((config) => {
+                  const health = healthByProvider[config.providerId];
+                  const blocked = isBlocked(health);
+                  return (
+                    <div className="text-[length:var(--text-xs)]" key={config.id}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-foreground">{config.label}</span>
+                        <span className={cn("shrink-0", blocked ? "text-block" : health?.ok === true ? "text-pass" : "text-muted-foreground")}>
+                          {health === undefined ? "checking" : blocked ? shortReason(health) : health.ok ? "ready" : "unknown"}
+                        </span>
+                      </div>
+                      {blocked && health?.remedy != null ? (
+                        <>
+                          <p className="mt-0.5 text-muted-foreground">{health.remedy.fix}</p>
+                          {health.remedy.command !== null ? (
+                            <pre className="mt-1 overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-2 px-1.5 py-1 font-mono text-[length:var(--text-2xs)]">
+                              {health.remedy.command}
+                            </pre>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              <Button className="mt-2 w-full" onClick={() => recheckAll()} size="sm" type="button" variant="outline">
+                Re-check providers
+              </Button>
+            </section>
+            <section>
               <h3 className="mb-2 flex items-center gap-1.5 text-[length:var(--text-2xs)] label-caps text-muted-foreground">
                 <FolderSync className="h-3.5 w-3.5" />
                 Drop folder
@@ -381,8 +411,12 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
               <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">Workspace</h3>
               {workspace ? <PathDisclosure path={workspace.absPath} /> : null}
               {session.worktreePath ? (
-                <div className="mt-2">
+                <div className="mt-2 space-y-2">
                   <PathDisclosure label="worktree" path={session.worktreePath} />
+                  <p className="text-[length:var(--text-xs)] text-muted-foreground">
+                    The agent runs here at last commit (HEAD), not your uncommitted working-tree files. Approving a diff
+                    copies that file into your open folder above.
+                  </p>
                 </div>
               ) : null}
             </section>

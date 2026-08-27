@@ -1,16 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 
-export class MissingCliError extends Error {
-  constructor(public readonly binary: string, extra?: string) {
-    super(
-      extra ??
-        `${binary} is not installed or not on PATH. Install the CLI and log in, then retry.`,
-    );
-    this.name = "MissingCliError";
-  }
-}
-
 export async function* spawnJsonl(input: {
   command: string;
   args: string[];

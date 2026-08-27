@@ -3,12 +3,13 @@ import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { createLogger, defineConfig, type Plugin } from "vite";
 import { checkUiHttp } from "@purser-sh/integrations/http-guard";
 import { injectWindowBootstrap } from "@purser-sh/integrations/html-inject";
 import { DEV_CONFIG_POLICY, handlePurserConfigRoute, readDevBootstrap } from "./src/lib/dev-config.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const WEB_PORT = Number(process.env.PURSER_WEB_PORT ?? 7410);
 
 function requestPath(url: string | undefined): string {
   return (url ?? "/").split("?")[0] ?? "/";
@@ -16,6 +17,16 @@ function requestPath(url: string | undefined): string {
 
 function isHtmlNavPath(pathname: string): boolean {
   return pathname === "/" || pathname === "/index.html" || pathname === "/phone" || pathname === "/phone/";
+}
+
+function printPortInUse(port: number): void {
+  console.error(
+    [
+      `Port ${port} is already in use.`,
+      `Free it with: lsof -ti:${port} | xargs -r kill`,
+      `Or start the web console elsewhere: PURSER_WEB_PORT=${port + 1} bun run --filter @purser-sh/web dev`,
+    ].join("\n"),
+  );
 }
 
 function purserConfigPlugin(mode: string, command: string): Plugin {
@@ -76,8 +87,35 @@ function purserConfigPlugin(mode: string, command: string): Plugin {
   };
 }
 
+function purserPortGuardPlugin(): Plugin {
+  return {
+    name: "purser-port-guard",
+    configureServer(server) {
+      server.httpServer?.on("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "EADDRINUSE") {
+          printPortInUse(server.config.server.port ?? WEB_PORT);
+          process.exit(1);
+        }
+      });
+    },
+  };
+}
+
+const viteLogger = createLogger();
+const quietPortConflictLogger = {
+  ...viteLogger,
+  error(msg: string, options?: Parameters<typeof viteLogger.error>[1]) {
+    if (/EADDRINUSE|already (?:in use|been used)/i.test(msg)) {
+      printPortInUse(WEB_PORT);
+      return;
+    }
+    viteLogger.error(msg, options);
+  },
+};
+
 export default defineConfig(({ mode, command }) => ({
-  plugins: [react(), tailwindcss(), purserConfigPlugin(mode, command)],
+  plugins: [react(), tailwindcss(), purserConfigPlugin(mode, command), purserPortGuardPlugin()],
+  customLogger: quietPortConflictLogger,
   resolve: {
     alias: {
       "@": path.resolve(path.dirname(fileURLToPath(import.meta.url)), "./src"),
@@ -86,7 +124,7 @@ export default defineConfig(({ mode, command }) => ({
     },
   },
   server: {
-    port: 7410,
+    port: Number.isFinite(WEB_PORT) && WEB_PORT > 0 ? WEB_PORT : 7410,
     strictPort: true,
     cors: false,
     headers: {

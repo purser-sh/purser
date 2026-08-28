@@ -1,4 +1,5 @@
 import { openSqliteDatabase } from "@purser-sh/db";
+import { resolvePurserEnv } from "@purser-sh/env";
 import { printVerify, verifyAudit } from "./audit.ts";
 import { purserDir, configPath, loadOrCreateConfig } from "./config.ts";
 import { formatListenError } from "./listen-error.ts";
@@ -44,7 +45,8 @@ if (args[0] === "audit" && args[1] === "verify") {
 
 const config = loadOrCreateConfig();
 augmentProcessPath();
-const db = openSqliteDatabase(process.env.PURSER_DATABASE_URL);
+const purserEnv = resolvePurserEnv();
+const db = openSqliteDatabase(purserEnv.databaseUrl);
 
 const ctx: AppContext = {
   config,
@@ -74,6 +76,6 @@ if (ctx.uiDir !== undefined || hasEmbeddedUi()) {
 console.log("Token is stored in the config file (not printed).");
 
 const packaged = typeof Bun !== "undefined" && Bun.isStandaloneExecutable === true;
-if (packaged && process.env.PURSER_NO_BROWSER !== "1" && (ctx.uiDir !== undefined || hasEmbeddedUi())) {
+if (packaged && !purserEnv.noBrowser && (ctx.uiDir !== undefined || hasEmbeddedUi())) {
   await openBrowser(uiUrl);
 }

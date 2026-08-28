@@ -1,5 +1,5 @@
-import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 
 export class SandboxError extends Error {
   constructor(message: string) {
@@ -28,13 +28,6 @@ export function readWorkspaceFile(root: string, relativePath: string, maxBytes: 
   }
   const buf = readFileSync(real);
   return buf.subarray(0, maxBytes).toString("utf8");
-}
-
-export function writeWorkspaceFile(root: string, relativePath: string, content: string): string {
-  const target = resolveInRoot(root, relativePath);
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, content, "utf8");
-  return target;
 }
 
 export function listWorkspaceDir(

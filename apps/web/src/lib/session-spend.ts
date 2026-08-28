@@ -1,4 +1,5 @@
 import type { Session, SpendReportPayload, StoredEvent } from "@purser-sh/protocol";
+import { providerDisplayLabel } from "@purser-sh/protocol";
 
 export type SpendRow = {
   key: string;
@@ -15,6 +16,16 @@ export function reportRows(report: SpendReportPayload | undefined): SpendRow[] {
     key: row.groupKey,
     tokens: row.inputTokens + row.outputTokens,
     costUsdMicros: row.costUsdMicros,
+  }));
+}
+
+export function providerSpendRows(
+  report: SpendReportPayload | undefined,
+  configs: ReadonlyArray<{ providerId: string; label: string }>,
+): SpendRow[] {
+  return reportRows(report).map((row) => ({
+    ...row,
+    key: providerDisplayLabel(row.key, configs),
   }));
 }
 

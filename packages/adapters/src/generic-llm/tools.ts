@@ -1,14 +1,136 @@
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { which } from "../cli/which.ts";
 import { formatMissingPath, resolveRequestedPath } from "../path-suggest.ts";
-import { listWorkspaceDir, readWorkspaceFile, SandboxError, writeWorkspaceFile } from "../sandbox.ts";
+import { listWorkspaceDir, readWorkspaceFile, SandboxError } from "../sandbox.ts";
+import type { GateResult } from "../tool-gate.ts";
+import type { ApplyPatchArgs, ListDirArgs, ReadFileArgs, RipgrepSearchArgs, RunBashArgs, WebSearchArgs, WriteFileArgs } from "../tool-gate.ts";
+import { buildUnifiedDiff, pathsFromPatch } from "../unified-diff.ts";
+import { ApprovedChange, commitToWorkspace, commitToWorkspaceAcknowledged, StagedChange, type SizeDeltaWarning } from "../workspace-write.ts";
 
 export const MAX_TOOL_OUTPUT = 32_000;
 export const MAX_FILE_BYTES = 256_000;
 export const MAX_TURNS = 16;
+
+export type ToolFileDiff = {
+  path: string;
+  patch: string;
+  added: number;
+  removed: number;
+  staged?: boolean;
+  newContent?: string;
+  oldContent?: string;
+};
+
+export type ToolExecutionResult = {
+  ok: boolean;
+  output: unknown;
+  summary: string;
+  fileDiff?: ToolFileDiff;
+  sizeDeltaWarning?: SizeDeltaWarning;
+};
+
+export type MutationPolicy = "stage-only" | "commit-immediate";
+
+function readExistingFile(cwd: string, path: string): string {
+  try {
+    return readWorkspaceFile(cwd, path, MAX_FILE_BYTES);
+  } catch {
+    return "";
+  }
+}
+
+function stagedFileDiff(staged: StagedChange, stagedFlag: boolean): ToolFileDiff {
+  return {
+    path: staged.path,
+    patch: staged.patch,
+    added: staged.added,
+    removed: staged.removed,
+    ...(stagedFlag
+      ? { staged: true as const, newContent: staged.newContent, oldContent: staged.oldContent }
+      : {}),
+  };
+}
+
+function copyTreeFile(srcRoot: string, destRoot: string, relativePath: string): void {
+  const src = join(srcRoot, relativePath);
+  if (!existsSync(src)) {
+    return;
+  }
+  const dest = join(destRoot, relativePath);
+  mkdirSync(dirname(dest), { recursive: true });
+  copyFileSync(src, dest);
+}
+
+function buildStagedFromPatch(
+  cwd: string,
+  patch: string,
+): ToolExecutionResult | { ok: true; staged: StagedChange } {
+  const paths = pathsFromPatch(patch);
+  if (paths.length === 0) {
+    return {
+      ok: false,
+      output: "Cannot apply patch: patch has no ---/+++ file headers",
+      summary: "patch missing file headers",
+    };
+  }
+  const primaryPath = paths[0]!;
+  const tempDir = mkdtempSync(join(tmpdir(), "purser-stage-patch-"));
+  try {
+    for (const path of paths) {
+      copyTreeFile(cwd, tempDir, path);
+    }
+    const patchPath = join(tempDir, "purser.patch");
+    writeFileSync(patchPath, patch);
+    const git = which("git");
+    if (git === null) {
+      return {
+        ok: false,
+        output: "git is not on PATH for the Purser process. Install git, then retry.",
+        summary: "git missing",
+      };
+    }
+    const result = spawnSync(git, ["apply", "--unsafe-paths", patchPath], { cwd: tempDir, encoding: "utf8" });
+    if (result.status !== 0) {
+      return {
+        ok: false,
+        output: result.stderr || result.stdout || "git apply failed",
+        summary: "apply patch failed",
+      };
+    }
+    const oldContent = readExistingFile(cwd, primaryPath);
+    const newContent = readFileSync(join(tempDir, primaryPath), "utf8");
+    const diff = buildUnifiedDiff(primaryPath, oldContent, newContent);
+    return {
+      ok: true,
+      staged: StagedChange.create({ path: primaryPath, newContent, oldContent, ...diff }),
+    };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+function commitStaged(staged: StagedChange, cwd: string, summaryVerb: string): ToolExecutionResult {
+  const approved = ApprovedChange.fromImmediate(staged);
+  const commit = commitToWorkspace(approved, cwd);
+  if (commit.status === "size_delta_warning") {
+    return {
+      ok: true,
+      output: commit.warning.message,
+      summary: commit.warning.message,
+      fileDiff: stagedFileDiff(staged, false),
+      sizeDeltaWarning: commit.warning,
+    };
+  }
+  return {
+    ok: true,
+    output: `${summaryVerb} ${staged.path}`,
+    summary: `${summaryVerb} ${staged.path}`,
+    fileDiff: stagedFileDiff(staged, false),
+  };
+}
 
 export type ToolName =
   | "read_file"
@@ -113,10 +235,6 @@ function cap(text: string): string {
   return `${text.slice(0, MAX_TOOL_OUTPUT)}\n…truncated`;
 }
 
-function str(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
 type RipgrepFailure =
   | "empty_query"
   | "rg_not_on_path"
@@ -152,10 +270,6 @@ function classifyRipgrepStderr(stderr: string): RipgrepFailure {
   return "rg_exit_error";
 }
 
-/**
- * Diagnose and run ripgrep. Exit code 1 means "no matches" and is success;
- * missing binary and bad args must fail with a message that names the cause.
- */
 function ripgrepSearch(
   cwd: string,
   query: string,
@@ -204,7 +318,6 @@ function ripgrepSearch(
       summary: "Cause: rg spawn failed",
     };
   }
-  // rg: 0 = matches, 1 = no matches, 2 = error (bad regex, I/O, …)
   if (result.status === 0 || result.status === 1) {
     const text = (result.stdout ?? "").trim();
     return {
@@ -222,57 +335,66 @@ function ripgrepSearch(
   };
 }
 
-export async function executeTool(input: {
-  name: string;
-  args: Record<string, unknown>;
+/** Sole executor entry for hosted tools — requires a gate pass; never accepts unvalidated args. */
+export async function runGatedTool(input: {
+  gate: Extract<GateResult, { ok: true }>;
   cwd: string;
+  mutationPolicy: MutationPolicy;
   webSearch?: (query: string) => Promise<string>;
-}): Promise<{ ok: boolean; output: unknown; summary: string }> {
+}): Promise<ToolExecutionResult> {
   try {
-    switch (input.name as ToolName) {
+    switch (input.gate.name) {
       case "read_file": {
-        const asked = str(input.args.path);
-        const resolved = resolveRequestedPath(input.cwd, asked);
+        const args = input.gate.args as ReadFileArgs;
+        const resolved = resolveRequestedPath(input.cwd, args.path);
         if (resolved.kind === "missing") {
-          const message = formatMissingPath(asked, resolved.suggestions);
+          const message = formatMissingPath(args.path, resolved.suggestions);
           return { ok: false, output: message, summary: message };
         }
         const output = readWorkspaceFile(input.cwd, resolved.path, MAX_FILE_BYTES);
         const summary =
-          resolved.kind === "resolved" ? `read ${resolved.path} (resolved from ${asked})` : `read ${resolved.path}`;
+          resolved.kind === "resolved" ? `read ${resolved.path} (resolved from ${args.path})` : `read ${resolved.path}`;
         return { ok: true, output, summary };
       }
       case "write_file": {
-        const path = str(input.args.path);
-        writeWorkspaceFile(input.cwd, path, str(input.args.content));
-        return { ok: true, output: `wrote ${path}`, summary: `wrote ${path}` };
+        const args = input.gate.args as WriteFileArgs;
+        const oldContent = readExistingFile(input.cwd, args.path);
+        const diff = buildUnifiedDiff(args.path, oldContent, args.content);
+        const staged = StagedChange.create({
+          path: args.path,
+          newContent: args.content,
+          oldContent,
+          ...diff,
+        });
+        if (input.mutationPolicy === "stage-only") {
+          return {
+            ok: true,
+            output: `staged write to ${args.path}`,
+            summary: `staged ${args.path}`,
+            fileDiff: stagedFileDiff(staged, true),
+          };
+        }
+        return commitStaged(staged, input.cwd, "wrote");
       }
       case "apply_patch": {
-        const patchPath = join(tmpdir(), `purser-patch-${crypto.randomUUID()}.diff`);
-        writeFileSync(patchPath, str(input.args.patch));
-        const git = which("git");
-        if (git === null) {
+        const args = input.gate.args as ApplyPatchArgs;
+        const built = buildStagedFromPatch(input.cwd, args.patch);
+        if (!("staged" in built)) {
+          return built;
+        }
+        if (input.mutationPolicy === "stage-only") {
           return {
-            ok: false,
-            output: "git is not on PATH for the Purser process. Install git, then retry.",
-            summary: "git missing",
+            ok: true,
+            output: `staged patch for ${built.staged.path}`,
+            summary: `staged ${built.staged.path}`,
+            fileDiff: stagedFileDiff(built.staged, true),
           };
         }
-        const result = spawnSync(git, ["apply", "--unsafe-paths", patchPath], {
-          cwd: input.cwd,
-          encoding: "utf8",
-        });
-        if (result.status !== 0) {
-          return {
-            ok: false,
-            output: result.stderr || result.stdout || "git apply failed",
-            summary: "apply patch failed",
-          };
-        }
-        return { ok: true, output: "patch applied", summary: "applied patch" };
+        return commitStaged(built.staged, input.cwd, "applied patch for");
       }
       case "list_dir": {
-        const asked = str(input.args.path) || ".";
+        const args = input.gate.args as ListDirArgs;
+        const asked = args.path.length > 0 ? args.path : ".";
         try {
           const output = listWorkspaceDir(input.cwd, asked);
           return { ok: true, output, summary: `listed ${asked}` };
@@ -280,7 +402,6 @@ export async function executeTool(input: {
           if (!(error instanceof SandboxError) && !(error instanceof Error)) {
             throw error;
           }
-          // ENOENT on a directory: offer near matches the same way as read_file.
           const message = error.message;
           if (/ENOENT|no such file/i.test(message)) {
             const resolved = resolveRequestedPath(input.cwd, asked);
@@ -293,27 +414,26 @@ export async function executeTool(input: {
         }
       }
       case "ripgrep_search": {
-        return ripgrepSearch(input.cwd, str(input.args.query), str(input.args.glob));
+        const args = input.gate.args as RipgrepSearchArgs;
+        return ripgrepSearch(input.cwd, args.query, args.glob ?? "");
       }
       case "run_bash": {
-        const command = str(input.args.command);
+        const args = input.gate.args as RunBashArgs;
         const bash = which("bash") ?? "bash";
-        const result = spawnSync(bash, ["-lc", command], {
+        const result = spawnSync(bash, ["-lc", args.command], {
           cwd: input.cwd,
           encoding: "utf8",
           timeout: 30_000,
           env: process.env,
         });
         const output = cap(`${result.stdout ?? ""}${result.stderr ?? ""}`);
-        return { ok: result.status === 0, output, summary: `ran ${command.slice(0, 80)}` };
+        return { ok: result.status === 0, output, summary: `ran ${args.command.slice(0, 80)}` };
       }
       case "web_search": {
-        const query = str(input.args.query);
-        const output = input.webSearch ? await input.webSearch(query) : "web_search is not configured";
-        return { ok: true, output, summary: `searched the web for ${query}` };
+        const args = input.gate.args as WebSearchArgs;
+        const output = input.webSearch ? await input.webSearch(args.query) : "web_search is not configured";
+        return { ok: true, output, summary: `searched the web for ${args.query}` };
       }
-      default:
-        return { ok: false, output: `unknown tool ${input.name}`, summary: `unknown tool ${input.name}` };
     }
   } catch (error) {
     const message = error instanceof SandboxError || error instanceof Error ? error.message : "tool failed";
@@ -321,13 +441,19 @@ export async function executeTool(input: {
   }
 }
 
-export function toolSummary(name: string, args: Record<string, unknown>): string {
-  if (name === "read_file") return `read ${str(args.path)}`;
-  if (name === "write_file") return `wrote ${str(args.path)}`;
-  if (name === "list_dir") return `listed ${str(args.path) || "."}`;
-  if (name === "run_bash") return `ran ${str(args.command).slice(0, 80)}`;
-  if (name === "ripgrep_search") return `searched ${str(args.query)}`;
-  if (name === "web_search") return `searched the web for ${str(args.query)}`;
+export function toolSummary(name: string, args: unknown): string {
+  if (typeof args !== "object" || args === null || Array.isArray(args)) {
+    return name;
+  }
+  const record = args as Record<string, unknown>;
+  if (name === "read_file" && typeof record.path === "string") return `read ${record.path}`;
+  if (name === "write_file" && typeof record.path === "string") return `wrote ${record.path}`;
+  if (name === "list_dir" && typeof record.path === "string") return `listed ${record.path || "."}`;
+  if (name === "run_bash" && typeof record.command === "string") return `ran ${record.command.slice(0, 80)}`;
+  if (name === "ripgrep_search" && typeof record.query === "string") return `searched ${record.query}`;
+  if (name === "web_search" && typeof record.query === "string") return `searched the web for ${record.query}`;
   if (name === "apply_patch") return "applied patch";
   return name;
 }
+
+export { commitToWorkspaceAcknowledged };

@@ -11,6 +11,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@purser-sh/env": "workspace:*",
     "@purser-sh/protocol": "workspace:*",
     "@purser-sh/prompt-coach": "workspace:*",
     "@purser-sh/pricing": "workspace:*",

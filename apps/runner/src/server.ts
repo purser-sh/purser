@@ -48,6 +48,7 @@ import { forgetProviderReadiness, providerReadiness, unavailableProvider } from 
 import { formatListenError } from "./listen-error.ts";
 import { executeRun, prepareRun } from "./session-run.ts";
 import { createSessionWorktree, applyApprovedPath, keepPath, removeSessionWorktree, revertPath, worktreeSessionNotice } from "./worktree.ts";
+import { applyStaged, discardStaged, hasStaged } from "./staging.ts";
 import { getSecret, setSecret, takeApiKeyFromSettings } from "./secrets.ts";
 import { connectRelay, type RelayHandle } from "./relay.ts";
 import { VoiceSession, toBase64Pcm } from "./voice-session.ts";
@@ -690,11 +691,15 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         throw new HandlerError("not_found", "workspace not found");
       }
       const cwd = session.worktreePath ?? workspace.absPath;
-      const result = message.payload.approve
-        ? session.worktreePath !== null
-          ? applyApprovedPath(session.worktreePath, workspace.absPath, message.payload.path)
-          : keepPath(cwd, message.payload.path)
-        : revertPath(cwd, message.payload.path);
+      const result = hasStaged(session.id, message.payload.path)
+        ? message.payload.approve
+          ? applyStaged(session.id, message.payload.path, workspace.absPath, session.worktreePath)
+          : discardStaged(session.id, message.payload.path)
+        : message.payload.approve
+          ? session.worktreePath !== null
+            ? applyApprovedPath(session.worktreePath, workspace.absPath, message.payload.path)
+            : keepPath(cwd, message.payload.path)
+          : revertPath(cwd, message.payload.path);
       if (!result.ok) {
         throw new HandlerError("git", result.detail);
       }

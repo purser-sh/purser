@@ -1,4 +1,5 @@
 import type { ProviderHealthPayload } from "@purser-sh/protocol";
+import { providerReadinessShortLabel } from "@purser-sh/protocol";
 import { useEffect } from "react";
 import { useRunner } from "@/lib/client";
 import { useDeckStore } from "@/lib/store";
@@ -41,17 +42,5 @@ export function isBlocked(health: ProviderHealthPayload | undefined): boolean {
 }
 
 export function shortReason(health: ProviderHealthPayload): string {
-  if (health.state === "cli_missing" || health.state === "package_missing") {
-    return "not installed";
-  }
-  if (health.state === "not_authenticated") {
-    return "not logged in";
-  }
-  if (health.state === "api_key_missing") {
-    return "no API key";
-  }
-  if (health.state === "unreachable") {
-    return "not reachable";
-  }
-  return "not ready";
+  return providerReadinessShortLabel(health.state);
 }

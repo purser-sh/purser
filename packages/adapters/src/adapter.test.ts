@@ -3,9 +3,28 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readWorkspaceFile, resolveInRoot, SandboxError } from "./sandbox.ts";
-import { executeTool } from "./generic-llm/tools.ts";
+import { gateToolCall } from "./tool-gate.ts";
+import { runGatedTool } from "./generic-llm/tools.ts";
 import { mapJsonlEvent } from "./cli/map-jsonl.ts";
 import { which } from "./cli/which.ts";
+
+const REGISTERED = new Set([
+  "read_file",
+  "write_file",
+  "apply_patch",
+  "list_dir",
+  "ripgrep_search",
+  "run_bash",
+  "web_search",
+]);
+
+async function executeTool(input: { name: string; args: Record<string, unknown>; cwd: string }) {
+  const gate = gateToolCall(input.name, JSON.stringify(input.args), REGISTERED);
+  if (!gate.ok) {
+    return { ok: false, output: gate.reason, summary: gate.reason };
+  }
+  return runGatedTool({ gate, cwd: input.cwd, mutationPolicy: "commit-immediate" });
+}
 
 describe("sandbox", () => {
   test("rejects path traversal", () => {

@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
+import { resolvePurserEnv } from "@purser-sh/env";
 import { PairingDesk, type PairRole } from "@purser-sh/integrations";
 
 type Room = {
@@ -128,8 +129,9 @@ export function startRelay(host: string, port: number): ReturnType<typeof create
   return httpServer;
 }
 
-const PORT = Number(process.env.PURSER_RELAY_PORT ?? 7430);
-const HOST = process.env.PURSER_RELAY_HOST ?? "127.0.0.1";
+const relayEnv = resolvePurserEnv();
+const PORT = relayEnv.relayPort;
+const HOST = relayEnv.relayHost;
 
 if (import.meta.main) {
   startRelay(HOST, PORT);

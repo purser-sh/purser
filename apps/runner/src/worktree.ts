@@ -1,6 +1,7 @@
-import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { ApprovedChange, commitToWorkspaceAcknowledged, StagedChange } from "@purser-sh/adapters";
 import { purserDir } from "./config.ts";
 import { countDirtyPaths, isGitRepo } from "./git.ts";
 import { isInsideRoot } from "./paths.ts";
@@ -80,8 +81,23 @@ export function applyApprovedPath(
     if (!existsSync(src)) {
       return { ok: false, detail: `no file at ${relativePath} in the session worktree` };
     }
-    mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(src, dest);
+    const newContent = readFileSync(src, "utf8");
+    let oldContent = "";
+    try {
+      oldContent = readFileSync(dest, "utf8");
+    } catch {
+      oldContent = "";
+    }
+    const staged = StagedChange.create({
+      path: relativePath,
+      newContent,
+      oldContent,
+      patch: "",
+      added: 0,
+      removed: 0,
+    });
+    const approved = ApprovedChange.fromApproval(staged, { kind: "approve" });
+    commitToWorkspaceAcknowledged(approved, workspaceAbsPath);
     return { ok: true, detail: `applied ${relativePath} to your workspace folder` };
   } catch (error) {
     return { ok: false, detail: error instanceof Error ? error.message : "apply failed" };

@@ -1,4 +1,5 @@
 import type { PermissionMode } from "@purser-sh/protocol";
+import { modelOptionLabel, modelSelectState } from "@purser-sh/protocol";
 import { Moon, Settings, Sun, SunMoon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RunMeter } from "@/components/RunMeter";
@@ -73,10 +74,7 @@ export function TopBar(props: { onSettings: () => void }) {
   const loadedModels = session ? modelsByProvider[session.providerId] : undefined;
   const models = loadedModels ?? [];
   const storedModelId = session?.modelId ?? null;
-  const unresolvableModelId =
-    loadedModels !== undefined && storedModelId !== null && !models.some((model) => model.id === storedModelId)
-      ? storedModelId
-      : null;
+  const modelState = modelSelectState(storedModelId, loadedModels);
   const spend = session ? lastSpendBySession[session.id] : undefined;
   const costModel = session ? (costModelByProvider[session.providerId] ?? "local") : "local";
   const ollamaEditWarning =
@@ -168,27 +166,27 @@ export function TopBar(props: { onSettings: () => void }) {
             never silently replaced by the first option's label.
           */}
           <select
-            aria-invalid={unresolvableModelId !== null}
+            aria-invalid={modelState === "invalid"}
             className={cn(
               "max-w-[10rem] truncate rounded-[var(--radius-control)] border bg-background px-2 py-1 text-[length:var(--text-xs)]",
-              unresolvableModelId !== null ? "border-block text-block" : "border-border",
+              modelState === "invalid" ? "border-block text-block" : "border-border",
             )}
             onChange={(event) => void setModel(event.target.value)}
             title={
-              unresolvableModelId !== null
-                ? `${unresolvableModelId} is not a model of ${session.providerId}. Pick one of its models.`
+              modelState === "invalid" && storedModelId !== null
+                ? `${storedModelId} is not a model of ${session.providerId}. Pick one of its models.`
                 : undefined
             }
             value={storedModelId ?? ""}
           >
-            {unresolvableModelId !== null ? (
-              <option disabled value={unresolvableModelId}>
-                invalid: {unresolvableModelId}
+            {modelState === "invalid" && storedModelId !== null ? (
+              <option disabled value={storedModelId}>
+                {modelOptionLabel(storedModelId, loadedModels)}
               </option>
             ) : null}
-            {unresolvableModelId === null && storedModelId !== null && loadedModels === undefined ? (
+            {modelState === "loading" && storedModelId !== null ? (
               <option disabled value={storedModelId}>
-                {storedModelId}
+                {modelOptionLabel(storedModelId, loadedModels)}
               </option>
             ) : null}
             {storedModelId === null ? (
@@ -198,7 +196,7 @@ export function TopBar(props: { onSettings: () => void }) {
             ) : null}
             {models.map((model) => (
               <option key={model.id} value={model.id}>
-                {model.label}
+                {modelOptionLabel(model.id, loadedModels)}
               </option>
             ))}
           </select>

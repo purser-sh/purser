@@ -33,3 +33,34 @@ export {
 } from "./readiness.ts";
 export { describeVendorFailure, translateVendorFailure, type VendorFailureContext } from "./vendor-errors.ts";
 export { claudeCredentialState } from "./claude-auth.ts";
+export { readWorkspaceFile } from "./sandbox.ts";
+export { buildUnifiedDiff, pathsFromPatch } from "./unified-diff.ts";
+export {
+  gateToolCall,
+  gateReasonForModel,
+  TOOL_NAMES,
+  type GateResult,
+  type ToolName as GatedToolName,
+} from "./tool-gate.ts";
+export {
+  normalizeProviderResponse,
+  type NormalizedToolCall,
+  type NormalizeProviderResponse,
+} from "./tool-call-normalize.ts";
+export {
+  ApprovedChange,
+  StagedChange,
+  commitToWorkspace,
+  commitToWorkspaceAcknowledged,
+  checkSizeDelta,
+  type Approve,
+  type CommitResult,
+  type SizeDeltaWarning,
+} from "./workspace-write.ts";
+export {
+  runGatedTool,
+  TOOL_DEFINITIONS,
+  toolSummary,
+  type ToolExecutionResult,
+  type MutationPolicy,
+} from "./generic-llm/tools.ts";

@@ -2,6 +2,7 @@ import { chmodSync, cpSync, mkdirSync, readFileSync, writeFileSync, existsSync }
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { resolvePurserEnv } from "@purser-sh/env";
 
 export const DEFAULT_PORT = 7420;
 export const DEFAULT_UI_ORIGINS = ["http://127.0.0.1:7410", "http://localhost:7410"] as const;
@@ -24,8 +25,8 @@ export const RunnerConfigSchema = z
 export type RunnerConfig = z.infer<typeof RunnerConfigSchema>;
 
 export function purserDir(): string {
-  const override = process.env.PURSER_HOME;
-  if (override !== undefined && override.length > 0) {
+  const override = resolvePurserEnv().home;
+  if (override !== undefined) {
     return override;
   }
   return join(homedir(), ".purser");
@@ -81,7 +82,7 @@ export function loadOrCreateConfig(): RunnerConfig {
   mkdirSync(logsDir(), { recursive: true, mode: 0o700 });
 
   const path = configPath();
-  const envPort = readEnvPort(process.env.PURSER_PORT);
+  const envPort = resolvePurserEnv().port ?? null;
   if (!existsSync(path)) {
     const port = envPort ?? DEFAULT_PORT;
     const created: RunnerConfig = {
@@ -100,15 +101,4 @@ export function loadOrCreateConfig(): RunnerConfig {
   const loaded = RunnerConfigSchema.parse(JSON.parse(readFileSync(path, "utf8")));
   // PURSER_PORT wins over the file so a conflict can be unblocked without editing config.
   return envPort === null ? loaded : { ...loaded, port: envPort };
-}
-
-function readEnvPort(raw: string | undefined): number | null {
-  if (raw === undefined || raw.trim().length === 0) {
-    return null;
-  }
-  const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`PURSER_PORT must be an integer 1–65535, got ${JSON.stringify(raw)}`);
-  }
-  return port;
 }

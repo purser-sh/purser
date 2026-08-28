@@ -4,12 +4,13 @@ import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { createLogger, defineConfig, type Plugin } from "vite";
+import { resolvePurserEnv } from "@purser-sh/env";
 import { checkUiHttp } from "@purser-sh/integrations/http-guard";
 import { injectWindowBootstrap } from "@purser-sh/integrations/html-inject";
 import { DEV_CONFIG_POLICY, handlePurserConfigRoute, readDevBootstrap } from "./src/lib/dev-config.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const WEB_PORT = Number(process.env.PURSER_WEB_PORT ?? 7410);
+const WEB_PORT = resolvePurserEnv().webPort;
 
 function requestPath(url: string | undefined): string {
   return (url ?? "/").split("?")[0] ?? "/";

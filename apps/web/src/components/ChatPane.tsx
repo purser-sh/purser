@@ -11,7 +11,7 @@ import { VoiceButton } from "@/components/VoiceButton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { useRunner } from "@/lib/client";
-import { formatUsdMicros } from "@/lib/money";
+import { budgetStatusTitle, ledgerCostLabel, ledgerTokenLabel } from "@purser-sh/protocol";
 import { isBlocked, useRecheckProvider } from "@/lib/readiness";
 import { useToastStore } from "@/lib/toast";
 import { selectedSession, sessionEvents, useDeckStore } from "@/lib/store";
@@ -292,8 +292,8 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
             <BudgetDecisionCard
               detail={
                 item.budget.unit === "usd_micros"
-                  ? `${formatUsdMicros(item.budget.spent)} of ${formatUsdMicros(item.budget.limit)}`
-                  : `${item.budget.spent} / ${item.budget.limit} tokens`
+                  ? `${ledgerCostLabel(item.budget.spent, "metered")} of ${ledgerCostLabel(item.budget.limit, "metered")}`
+                  : `${ledgerTokenLabel(item.budget.spent, "provider_usage")} of ${ledgerTokenLabel(item.budget.limit, "provider_usage")} tokens`
               }
               key={item.requestId}
               onAllowHeadroom={() =>
@@ -305,7 +305,7 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
               }
               onAllowOnce={() => void client.request("budget_response", { requestId: item.requestId, decision: "allow_once" })}
               onStop={() => void client.request("budget_response", { requestId: item.requestId, decision: "deny" })}
-              title={`Budget ${item.budget.scope}/${item.budget.window} is at ${Math.trunc(item.budget.pct)}%`}
+              title={budgetStatusTitle(item.budget.scope, item.budget.window, item.budget.pct)}
             />
           ))}
 

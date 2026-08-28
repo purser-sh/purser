@@ -1,5 +1,5 @@
 {
-  "name": "@purser-sh/adapters",
+  "name": "@purser-sh/env",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,12 +10,6 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.247",
-    "@purser-sh/pricing": "workspace:*",
-    "@purser-sh/protocol": "workspace:*",
-    "zod": "^4.0.17"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",

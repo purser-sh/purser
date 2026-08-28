@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { resolvePurserEnv } from "@purser-sh/env";
 import { Database } from "bun:sqlite";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
@@ -15,7 +16,7 @@ export function migrationsFolder(): string {
   return new URL("../drizzle", import.meta.url).pathname;
 }
 
-export function openSqliteDatabase(url = process.env.PURSER_DATABASE_URL): AppDatabase {
+export function openSqliteDatabase(url = resolvePurserEnv().databaseUrl): AppDatabase {
   const resolved = resolveDatabaseDriver(url);
   if (resolved.driver === "postgres") {
     throw new Error(

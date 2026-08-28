@@ -80,6 +80,20 @@ export const AgentEventFileDiffSchema = z
     patch: z.string(),
     added: z.number().int().nonnegative(),
     removed: z.number().int().nonnegative(),
+    /** True when the change is staged and not yet on disk (ask mode). */
+    staged: z.boolean().optional(),
+    /** Present on staged diffs; stripped before SQLite persist, kept in runner staging store. */
+    newContent: z.string().optional(),
+    oldContent: z.string().optional(),
+    sizeDeltaWarning: z
+      .object({
+        severity: z.literal("high"),
+        message: z.string(),
+        priorBytes: z.number().int().nonnegative(),
+        newBytes: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

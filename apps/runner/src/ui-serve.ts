@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, relative, resolve, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { resolvePurserEnv } from "@purser-sh/env";
 import { checkUiHttp, CONFIG_ROUTE_HEADERS, injectWindowBootstrap, type HttpGuardPolicy } from "@purser-sh/integrations";
 import { EMBEDDED_UI } from "./embedded-ui.gen.ts";
 
@@ -169,7 +170,7 @@ export function serveEmbeddedUi(input: {
 }
 
 export function resolveUiDir(metaDir: string): string | undefined {
-  const override = process.env.PURSER_UI_DIR;
+  const override = resolvePurserEnv().uiDir;
   if (override !== undefined && override.length > 0) {
     return existsSync(join(override, "index.html")) ? override : undefined;
   }

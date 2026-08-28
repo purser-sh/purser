@@ -1,3 +1,4 @@
+import { budgetSummaryLabel } from "@purser-sh/protocol";
 import { generatePairingCode, PAIRING_CODE_LENGTH } from "@purser-sh/integrations/pairing-code";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -262,9 +263,7 @@ export function SettingsPanel() {
           {budgets.map((budget) => (
             <div className="flex items-center justify-between text-xs text-muted-foreground" key={budget.id}>
               <span>
-                {budget.scope}/{budget.window} · {budget.action}
-                {budget.limitTokens !== null ? ` · ${budget.limitTokens} tok` : ""}
-                {budget.limitUsdMicros !== null ? ` · ${budget.limitUsdMicros} µUSD` : ""}
+                {budgetSummaryLabel(budget)}
               </span>
               <button
                 className="text-destructive"

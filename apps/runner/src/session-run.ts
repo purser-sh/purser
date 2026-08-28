@@ -18,6 +18,7 @@ import { getSecret } from "./secrets.ts";
 import { buildExtraPrompt } from "./skills.ts";
 import { appendAudit } from "./audit.ts";
 import { purserDir } from "./config.ts";
+import { writeStaged } from "./staging.ts";
 import { finalizeRunLedger, recordUsageEvent } from "./meter.ts";
 import {
   buildSpendUpdate,
@@ -49,6 +50,14 @@ function roleFor(event: AgentEvent): EventRole {
     return "tool";
   }
   return "assistant";
+}
+
+function eventForClient(event: AgentEvent): AgentEvent {
+  if (event.kind === "file_diff" && event.newContent !== undefined) {
+    const { newContent: _ignored, ...rest } = event;
+    return rest;
+  }
+  return event;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -142,17 +151,35 @@ export async function executeRun(input: {
       }
       input.broadcast({
         type: "agent_event",
-        payload: { sessionId: input.sessionId, runId: input.runId, seq, event },
+        payload: { sessionId: input.sessionId, runId: input.runId, seq, event: eventForClient(event) },
       });
       seq += 1;
 
       if (!SKIP_PERSIST.has(event.kind)) {
-        insertEvent(input.db, {
-          sessionId: input.sessionId,
-          kind: event.kind,
-          role: roleFor(event),
-          payload: event,
-        });
+        if (event.kind === "file_diff" && event.staged === true && typeof event.newContent === "string") {
+          writeStaged(input.sessionId, {
+            path: event.path,
+            newContent: event.newContent,
+            oldContent: event.oldContent,
+            patch: event.patch,
+            added: event.added,
+            removed: event.removed,
+          });
+          const { newContent: _ignored, ...persisted } = event;
+          insertEvent(input.db, {
+            sessionId: input.sessionId,
+            kind: event.kind,
+            role: roleFor(event),
+            payload: persisted,
+          });
+        } else {
+          insertEvent(input.db, {
+            sessionId: input.sessionId,
+            kind: event.kind,
+            role: roleFor(event),
+            payload: event,
+          });
+        }
       }
 
       if (event.kind === "text" || event.kind === "text_delta") {

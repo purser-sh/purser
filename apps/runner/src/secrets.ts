@@ -1,13 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { purserDir } from "./config.ts";
+import { purserSecretEnvKeys } from "@purser-sh/env";
 
 const ENV_MAP: Record<string, string[]> = {
-  grok: ["XAI_API_KEY", "PURSER_XAI_API_KEY"],
-  generic_llm: ["OPENAI_API_KEY", "PURSER_OPENAI_API_KEY"],
+  grok: ["XAI_API_KEY", ...purserSecretEnvKeys("grok")],
+  generic_llm: ["OPENAI_API_KEY", ...purserSecretEnvKeys("generic_llm")],
   ollama: [],
-  perplexity: ["PERPLEXITY_API_KEY", "PURSER_PERPLEXITY_API_KEY"],
-  openai: ["OPENAI_API_KEY", "PURSER_OPENAI_API_KEY"],
+  perplexity: ["PERPLEXITY_API_KEY", ...purserSecretEnvKeys("perplexity")],
+  openai: ["OPENAI_API_KEY", ...purserSecretEnvKeys("openai")],
   deepgram: ["DEEPGRAM_API_KEY"],
   elevenlabs: ["ELEVENLABS_API_KEY"],
 };
@@ -44,7 +45,7 @@ function writeStore(store: Record<string, string>): void {
 }
 
 export function getSecret(providerId: string): string | null {
-  const keys = ENV_MAP[providerId] ?? [`PURSER_${providerId.toUpperCase()}_API_KEY`];
+  const keys = ENV_MAP[providerId] ?? purserSecretEnvKeys(providerId);
   for (const key of keys) {
     const value = process.env[key];
     if (value !== undefined && value.length > 0) {

@@ -1,7 +1,9 @@
 import type { AgentEvent } from "@purser-sh/protocol";
 import type { RunInput } from "../types.ts";
 import { loadMcpTools } from "../mcp.ts";
-import { executeTool, MAX_TURNS, TOOL_DEFINITIONS, toolSummary } from "./tools.ts";
+import { gateToolCall, gateReasonForModel, type GateResult } from "../tool-gate.ts";
+import { normalizeProviderResponse } from "../tool-call-normalize.ts";
+import { MAX_TURNS, runGatedTool, TOOL_DEFINITIONS, toolSummary, type ToolExecutionResult } from "./tools.ts";
 import { usageEventFromProvider } from "../usage.ts";
 
 type ChatMessage = {
@@ -17,41 +19,24 @@ type ToolCall = {
   function: { name: string; arguments: string };
 };
 
-function parseArgs(raw: string): Record<string, unknown> {
+function parseMcpArguments(raw: string): { ok: true; args: unknown } | { ok: false; reason: string } {
   try {
-    const value: unknown = JSON.parse(raw);
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
+    return { ok: true, args: JSON.parse(raw) as unknown };
   } catch {
-    return { raw };
+    return { ok: false, reason: "Invalid JSON in MCP tool arguments." };
   }
-  return { raw };
 }
 
 function isLoopRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseToolCalls(value: unknown): ToolCall[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const out: ToolCall[] = [];
-  for (const item of value) {
-    if (!isLoopRecord(item) || typeof item.id !== "string" || item.type !== "function") {
-      continue;
-    }
-    if (!isLoopRecord(item.function) || typeof item.function.name !== "string" || typeof item.function.arguments !== "string") {
-      continue;
-    }
-    out.push({
-      id: item.id,
-      type: "function",
-      function: { name: item.function.name, arguments: item.function.arguments },
-    });
-  }
-  return out.length > 0 ? out : undefined;
+function toToolCalls(normalized: Extract<ReturnType<typeof normalizeProviderResponse>, { kind: "calls" }>): ToolCall[] {
+  return normalized.calls.map((call) => ({
+    id: call.id,
+    type: "function" as const,
+    function: { name: call.name, arguments: call.rawArguments },
+  }));
 }
 
 async function complete(input: {
@@ -94,7 +79,7 @@ async function complete(input: {
     message: {
       role: "assistant",
       content: typeof message.content === "string" ? message.content : null,
-      tool_calls: parseToolCalls(message.tool_calls),
+      tool_calls: message.tool_calls as ToolCall[] | undefined,
     },
     usage: isLoopRecord(body.usage) ? body.usage : undefined,
   };
@@ -108,6 +93,7 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
     ...(input.allowFiles ? TOOL_DEFINITIONS : TOOL_DEFINITIONS.filter((tool) => tool.function.name === "web_search")),
     ...(mcp?.definitions ?? []),
   ];
+  const registeredNames = new Set(tools.map((tool) => tool.function.name));
   const messages: ChatMessage[] = [
     {
       role: "system",
@@ -144,24 +130,96 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
       yield usage;
     }
     const assistant = result.message;
-    messages.push(assistant);
     const text = assistant.content ?? "";
-    if (text.length > 0) {
-      yield { kind: "text_delta", text };
-      yield { kind: "text", text };
+    const normalized = normalizeProviderResponse(
+      { tool_calls: assistant.tool_calls, content: text },
+      { contentIdPrefix: `content-${turn}` },
+    );
+    let calls: ToolCall[] = [];
+    let emitText = text;
+    let invalidContentCall: { reason: string; attemptedName?: string; raw: string } | null = null;
+
+    if (normalized.kind === "calls") {
+      calls = toToolCalls(normalized);
+      if (normalized.calls.some((call) => call.source === "content")) {
+        assistant.tool_calls = calls;
+        assistant.content = null;
+        emitText = "";
+      }
+    } else if (normalized.kind === "malformed_content") {
+      invalidContentCall = normalized;
+      emitText = "";
     }
-    const calls = assistant.tool_calls ?? [];
+
+    messages.push(assistant);
+    if (emitText.length > 0) {
+      yield { kind: "text_delta", text: emitText };
+      yield { kind: "text", text: emitText };
+    }
+    if (invalidContentCall !== null) {
+      const toolId = `content-${turn}-invalid-${crypto.randomUUID()}`;
+      const name = invalidContentCall.attemptedName ?? "tool_call";
+      yield {
+        kind: "tool_call",
+        toolId,
+        name,
+        input: {},
+        summary: invalidContentCall.reason,
+      };
+      yield {
+        kind: "tool_result",
+        toolId,
+        ok: false,
+        output: `${invalidContentCall.reason}\n\n${invalidContentCall.raw}`,
+        ms: 0,
+      };
+      yield { kind: "done", status: "ok", summary: invalidContentCall.reason };
+      return;
+    }
     if (calls.length === 0) {
-      yield { kind: "done", status: "ok", summary: text.slice(0, 160) || "Finished" };
+      yield { kind: "done", status: "ok", summary: emitText.slice(0, 160) || "Finished" };
       return;
     }
     for (const call of calls) {
-      const args = parseArgs(call.function.arguments);
-      const summary = toolSummary(call.function.name, args);
-      if (input.permissionMode === "ask" && input.askPermission && call.function.name !== "read_file" && call.function.name !== "list_dir" && call.function.name !== "ripgrep_search" && call.function.name !== "web_search") {
+      const isMcp = call.function.name.startsWith("mcp__");
+      const gated = isMcp
+        ? (() => {
+            if (!registeredNames.has(call.function.name)) {
+              return { ok: false as const, reason: `Unknown tool "${call.function.name}".` };
+            }
+            const parsed = parseMcpArguments(call.function.arguments);
+            if (!parsed.ok) {
+              return parsed;
+            }
+            return { ok: true as const, name: call.function.name, args: parsed.args };
+          })()
+        : gateToolCall(call.function.name, call.function.arguments, registeredNames);
+      if (!gated.ok) {
+        const reason = gateReasonForModel(gated);
+        yield {
+          kind: "tool_call",
+          toolId: call.id,
+          name: call.function.name,
+          input: {},
+          summary: gated.reason,
+        };
+        yield { kind: "tool_result", toolId: call.id, ok: false, output: reason, ms: 0 };
+        messages.push({ role: "tool", tool_call_id: call.id, content: reason });
+        continue;
+      }
+      const summary = toolSummary(gated.name, gated.args);
+      if (
+        input.permissionMode === "ask" &&
+        input.askPermission &&
+        gated.name !== "read_file" &&
+        gated.name !== "list_dir" &&
+        gated.name !== "ripgrep_search" &&
+        gated.name !== "web_search" &&
+        !isMcp
+      ) {
         const requestId = call.id;
-        yield { kind: "permission_request", requestId, action: call.function.name, detail: args };
-        const allow = await input.askPermission({ requestId, action: call.function.name, detail: args });
+        yield { kind: "permission_request", requestId, action: gated.name, detail: gated.args };
+        const allow = await input.askPermission({ requestId, action: gated.name, detail: gated.args });
         if (!allow) {
           messages.push({
             role: "tool",
@@ -171,25 +229,32 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
           continue;
         }
       }
-      yield { kind: "tool_call", toolId: call.id, name: call.function.name, input: args, summary };
+      yield { kind: "tool_call", toolId: call.id, name: call.function.name, input: gated.args, summary };
       const started = Date.now();
-      const executed = call.function.name.startsWith("mcp__")
-        ? await (mcp?.call(call.function.name, args) ?? Promise.resolve({ ok: false, output: "MCP is not loaded" }))
-        : await executeTool({
-            name: call.function.name,
-            args,
-            cwd: input.cwd,
-            webSearch: async (query) => {
-              const key =
-                typeof input.config?.settings.perplexityApiKey === "string"
-                  ? input.config.settings.perplexityApiKey
-                  : (input.config?.apiKey ?? null);
-              if (key === null || key.length === 0) {
-                return "Perplexity is not configured. Set PERPLEXITY_API_KEY or a key in Settings.";
-              }
-              return webSearchPerplexity(key, query, input.signal);
-            },
-          });
+      let executed: ToolExecutionResult;
+      if (isMcp) {
+        executed = {
+          ...(await (mcp?.call(call.function.name, gated.args as Record<string, unknown>) ??
+            Promise.resolve({ ok: false, output: "MCP is not loaded" }))),
+          summary: call.function.name,
+        };
+      } else {
+        executed = await runGatedTool({
+          gate: gated as Extract<GateResult, { ok: true }>,
+          cwd: input.cwd,
+          mutationPolicy: input.permissionMode === "ask" ? "stage-only" : "commit-immediate",
+          webSearch: async (query) => {
+            const key =
+              typeof input.config?.settings.perplexityApiKey === "string"
+                ? input.config.settings.perplexityApiKey
+                : (input.config?.apiKey ?? null);
+            if (key === null || key.length === 0) {
+              return "Perplexity is not configured. Set PERPLEXITY_API_KEY or a key in Settings.";
+            }
+            return webSearchPerplexity(key, query, input.signal);
+          },
+        });
+      }
       yield {
         kind: "tool_result",
         toolId: call.id,
@@ -197,9 +262,19 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
         output: executed.output,
         ms: Date.now() - started,
       };
-      if (call.function.name === "write_file" || call.function.name === "apply_patch") {
-        const path = typeof args.path === "string" ? args.path : "patch";
-        yield { kind: "file_diff", path, patch: String(executed.output), added: 1, removed: 0 };
+      if (executed.fileDiff !== undefined) {
+        const diff = executed.fileDiff;
+        yield {
+          kind: "file_diff",
+          path: diff.path,
+          patch: diff.patch,
+          added: diff.added,
+          removed: diff.removed,
+          ...(diff.staged
+            ? { staged: true, newContent: diff.newContent, oldContent: diff.oldContent }
+            : {}),
+          ...(executed.sizeDeltaWarning ? { sizeDeltaWarning: executed.sizeDeltaWarning } : {}),
+        };
       }
       messages.push({
         role: "tool",

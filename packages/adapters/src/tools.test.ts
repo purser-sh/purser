@@ -2,9 +2,28 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { executeTool } from "./generic-llm/tools.ts";
+import { gateToolCall } from "./tool-gate.ts";
+import { runGatedTool } from "./generic-llm/tools.ts";
 import { formatMissingPath, resolveRequestedPath, suggestNearPaths } from "./path-suggest.ts";
 import { which } from "./cli/which.ts";
+
+const REGISTERED = new Set([
+  "read_file",
+  "write_file",
+  "apply_patch",
+  "list_dir",
+  "ripgrep_search",
+  "run_bash",
+  "web_search",
+]);
+
+async function executeTool(input: { name: string; args: Record<string, unknown>; cwd: string }) {
+  const gate = gateToolCall(input.name, JSON.stringify(input.args), REGISTERED);
+  if (!gate.ok) {
+    return { ok: false, output: gate.reason, summary: gate.reason };
+  }
+  return runGatedTool({ gate, cwd: input.cwd, mutationPolicy: "commit-immediate" });
+}
 
 function workspace(): string {
   const root = mkdtempSync(join(tmpdir(), ".tmp-tools-"));

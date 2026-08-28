@@ -401,6 +401,8 @@ This is an **operator console**, not a full IDE. The editor remains VS Code or C
 
 ## 12. Review checklist
 
+**Public claims:** `apps/runner/src/promises.test.ts` (`describe("what Purser promises")`) is the contract test for everything we say on purser.sh. If a test there is red, we have shipped a lie — fix it before anything else.
+
 Read in this order:
 
 1. **This document** (`docs/REVIEW.md`) — product thesis, split companion vs cell, honest “not shipped” list.

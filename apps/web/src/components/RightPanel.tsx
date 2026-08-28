@@ -1,4 +1,5 @@
 import type { FileContentPayload, FsEntry, SpendReportPayload } from "@purser-sh/protocol";
+import { budgetSummaryLabel } from "@purser-sh/protocol";
 import { FileText, FolderSync, GitBranch, Link2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PathDisclosure } from "@/components/PathDisclosure";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useRunner } from "@/lib/client";
 import { parseUsdToMicros } from "@/lib/money";
 import { isBlocked, shortReason, useRecheckProvider } from "@/lib/readiness";
-import { reportRows, sessionSpendRows } from "@/lib/session-spend";
+import { providerSpendRows, sessionSpendRows } from "@/lib/session-spend";
 import {
   type RightPanelTab,
   selectedSession,
@@ -173,7 +174,7 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
           <div className="space-y-4">
             <RunMeter
               costModel={costModel}
-              providerRows={reportRows(providerReport)}
+              providerRows={providerSpendRows(providerReport, providerConfigs)}
               sessionRows={sessionSpendRows(sessionReport, sessions, events)}
               spend={spend}
               spendSummary={spendSummary}
@@ -253,9 +254,7 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
                     className="flex items-center justify-between gap-2 text-[length:var(--text-xs)] text-muted-foreground"
                     key={budget.id}
                   >
-                    <span className="min-w-0 truncate">
-                      {budget.scope}/{budget.window} · {budget.action}
-                    </span>
+                    <span className="min-w-0 truncate">{budgetSummaryLabel(budget)}</span>
                     <button
                       className="shrink-0 text-destructive"
                       onClick={() => void client.request("delete_budget", { budgetId: budget.id })}

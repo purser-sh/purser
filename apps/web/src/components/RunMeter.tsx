@@ -1,10 +1,10 @@
 import type { BudgetStatus, CostModel, SpendSummary, SpendUpdatePayload } from "@purser-sh/protocol";
+import { ledgerCostLabel, ledgerTokenLabel } from "@purser-sh/protocol";
 import { Sparkles } from "lucide-react";
 import { TokenCountLabel } from "@/components/TokenCountLabel";
 import { Button } from "@/components/ui/button";
 import type { PromptEstimate } from "@purser-sh/prompt-coach";
 import { formatCostCompact, formatTokenCompact } from "@/lib/format-tokens";
-import { formatUsdMicros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 function tightestBudget(budgets: BudgetStatus[] | undefined): BudgetStatus | undefined {
@@ -60,8 +60,7 @@ export function RunMeter(props: CompactProps | FullProps) {
 
 function RunMeterCompact(props: CompactProps) {
   const tokens = props.spend ? props.spend.tokens.input + props.spend.tokens.output : 0;
-  const approximate = props.spend?.source === "estimated";
-  const metered = props.costModel === "metered";
+  const source = props.spend?.source ?? "provider_usage";
   const cost = props.spend?.costUsdMicros ?? null;
   const tightest = tightestBudget(props.spend?.budgets);
   const pct = tightest !== undefined ? Math.min(100, Math.trunc(tightest.pct)) : 0;
@@ -77,10 +76,10 @@ function RunMeterCompact(props: CompactProps) {
         )}
       />
       <span className="tabular-nums text-[length:var(--text-xs)] text-foreground">
-        {props.spend !== undefined ? `${formatTokenCompact(tokens, approximate)} tok` : "not yet"}
+        {props.spend !== undefined ? `${formatTokenCompact(tokens, source)} tok` : "not yet"}
       </span>
       <span className="tabular-nums text-[length:var(--text-xs)] text-muted-foreground">
-        {formatCostCompact(cost, metered)}
+        {formatCostCompact(cost, props.costModel)}
       </span>
       {tightest !== undefined ? (
         <span className="flex min-w-[4rem] flex-1 items-center gap-1">
@@ -113,7 +112,7 @@ function RunMeterCompact(props: CompactProps) {
 
 function RunMeterFull(props: FullProps) {
   const runTokens = props.spend ? props.spend.tokens.input + props.spend.tokens.output : 0;
-  const approximate = props.spend?.source === "estimated";
+  const runSource = props.spend?.source ?? "provider_usage";
   const metered = props.costModel === "metered";
   const runCost = props.spend?.costUsdMicros ?? null;
   const tightest = tightestBudget(props.spend?.budgets);
@@ -122,20 +121,20 @@ function RunMeterFull(props: FullProps) {
     {
       label: "This run",
       tokens: runTokens,
-      cost: metered ? runCost : null,
-      approximate,
+      tokenSource: runSource as "estimated" | "provider_usage",
+      cost: runCost,
     },
     {
       label: "Today",
       tokens: props.spendSummary.today.tokens,
+      tokenSource: "provider_usage" as const,
       cost: metered ? props.spendSummary.today.costUsdMicros : null,
-      approximate: false,
     },
     {
       label: "This month",
       tokens: props.spendSummary.month.tokens,
+      tokenSource: "provider_usage" as const,
       cost: metered ? props.spendSummary.month.costUsdMicros : null,
-      approximate: false,
     },
   ];
 
@@ -146,8 +145,7 @@ function RunMeterFull(props: FullProps) {
           <div className="flex items-center justify-between gap-3 text-[length:var(--text-sm)]" key={row.label}>
             <span className="text-muted-foreground">{row.label}</span>
             <span className="tabular-nums text-foreground">
-              {row.approximate ? "≈" : ""}
-              {row.tokens.toLocaleString("en-US")} tok, {row.cost !== null ? formatUsdMicros(row.cost) : "n/a"}
+              {ledgerTokenLabel(row.tokens, row.tokenSource)} tok, {ledgerCostLabel(row.cost, props.costModel)}
             </span>
           </div>
         ))}
@@ -169,7 +167,7 @@ function RunMeterFull(props: FullProps) {
               <div className="flex justify-between gap-2 tabular-nums text-[length:var(--text-xs)]" key={row.key}>
                 <span className="truncate text-text-2">{row.key}</span>
                 <span className="shrink-0 text-foreground">
-                  {row.tokens.toLocaleString("en-US")} tok, {row.costUsdMicros !== null ? formatUsdMicros(row.costUsdMicros) : "n/a"}
+                  {ledgerTokenLabel(row.tokens, "provider_usage")} tok, {ledgerCostLabel(row.costUsdMicros, props.costModel)}
                 </span>
               </div>
             ))}
@@ -187,7 +185,7 @@ function RunMeterFull(props: FullProps) {
                   {row.key}
                 </span>
                 <span className="shrink-0 text-foreground">
-                  {row.tokens.toLocaleString("en-US")} tok, {row.costUsdMicros !== null ? formatUsdMicros(row.costUsdMicros) : "n/a"}
+                  {ledgerTokenLabel(row.tokens, "provider_usage")} tok, {ledgerCostLabel(row.costUsdMicros, props.costModel)}
                 </span>
               </div>
             ))}

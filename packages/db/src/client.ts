@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { resolvePurserEnv } from "@purser-sh/env";
 import { Database } from "bun:sqlite";
@@ -26,13 +26,20 @@ export function openSqliteDatabase(url = resolvePurserEnv().databaseUrl): AppDat
   const filePath = resolveSqliteFilePath(resolved.url);
 
   if (filePath !== ":memory:") {
-    mkdirSync(dirname(filePath), { recursive: true });
+    mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
   }
 
   const client = new Database(filePath, { create: true });
   client.exec("PRAGMA foreign_keys = ON;");
   if (filePath !== ":memory:") {
     client.exec("PRAGMA journal_mode = WAL;");
+    client.exec("SELECT 1");
+    for (const suffix of ["", "-wal", "-shm"] as const) {
+      const path = `${filePath}${suffix}`;
+      if (existsSync(path)) {
+        chmodSync(path, 0o600);
+      }
+    }
   }
 
   const db = drizzle(client, { schema: sqliteSchema });

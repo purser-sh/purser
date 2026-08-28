@@ -1,15 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gateToolCall, runGatedTool } from "@purser-sh/adapters";
 import {
+  appendLedgerEntry,
   insertRun,
   insertSession,
   insertWorkspace,
+  listLedger,
   listLedgerByRun,
+  loadSpendSummary,
+  loadState,
+  localDayStart,
+  nextLocalDay,
   openSqliteDatabase,
   seedDefaults,
+  sumLedgerRows,
 } from "@purser-sh/db";
 import { ledgerCostLabel, ledgerTokenLabel } from "@purser-sh/protocol";
 import { tokensToUsdMicros } from "@purser-sh/pricing";
@@ -19,8 +26,10 @@ import {
   printVerify,
   verifyAudit,
 } from "./audit.ts";
+import { buildSpendReport, buildSpendUpdate } from "./budget.ts";
 import { loadOrCreateConfig, purserDir } from "./config.ts";
 import { recordUsageEvent } from "./meter.ts";
+import { setSecret } from "./secrets.ts";
 import { applyStaged, discardStaged, writeStaged } from "./staging.ts";
 
 const REGISTERED = new Set([
@@ -33,10 +42,40 @@ const REGISTERED = new Set([
   "web_search",
 ]);
 
+/** Payload that erased a real README when arguments were coerced instead of rejected. */
+const ERASED_FILE_GATE_RAW =
+  '{ "path": "README.md", "content": "<!-- Purser -->\\n" + (read_file("README.md") ?? "") }';
+
 function tempHome(): string {
   const home = mkdtempSync(join(tmpdir(), "purser-promise-"));
   process.env.PURSER_HOME = home;
   return home;
+}
+
+function ledgerTokensForToday(db: Parameters<typeof listLedger>[0], now: Date): number {
+  const dayStart = localDayStart(now);
+  const dayEnd = nextLocalDay(now);
+  const rows = listLedger(db).filter((row) => row.ts >= dayStart && row.ts < dayEnd);
+  return sumLedgerRows(rows).tokens;
+}
+
+function reportTokens(report: ReturnType<typeof buildSpendReport>): number {
+  const totals = report.totals;
+  return totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheWriteTokens;
+}
+
+function walkConfigTree(root: string): void {
+  expect(statSync(root).mode & 0o777).toBe(0o700);
+  for (const name of readdirSync(root)) {
+    const path = join(root, name);
+    const st = statSync(path);
+    if (st.isDirectory()) {
+      expect(st.mode & 0o777).toBe(0o700);
+      walkConfigTree(path);
+      continue;
+    }
+    expect(st.mode & 0o777).toBe(0o600);
+  }
 }
 
 describe("what Purser promises", () => {
@@ -126,26 +165,67 @@ describe("what Purser promises", () => {
     });
     const session = insertSession(db, {
       workspaceId: workspace.id,
-      title: "grok",
-      providerId: "grok",
-      modelId: "grok-4.6",
+      title: "ollama",
+      providerId: "ollama",
+      modelId: "qwen2.5-coder:7b",
       permissionMode: "ask",
     });
-    const run = insertRun(db, session.id);
-    recordUsageEvent(db, session, run.id, {
-      kind: "usage",
-      inputTokens: 1_000,
-      outputTokens: 250,
-      cacheReadTokens: null,
-      cacheWriteTokens: null,
-      source: "provider_usage",
+
+    const now = new Date(2026, 7, 28, 15, 30, 0);
+    const yesterday = new Date(2026, 7, 27, 22, 0, 0);
+    const earlierToday = new Date(2026, 7, 28, 9, 0, 0);
+
+    const runEarlier = insertRun(db, session.id);
+    const runCurrent = insertRun(db, session.id);
+
+    const base = {
+      workspaceId: workspace.id,
+      sessionId: session.id,
+      providerId: "ollama",
+      model: "qwen2.5-coder:7b",
+      costModel: "local" as const,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsdMicros: null,
+      source: "provider_usage" as const,
+    };
+
+    appendLedgerEntry(db, {
+      ...base,
+      runId: "run_yesterday_only_in_ledger",
+      inputTokens: 9_999,
+      ts: yesterday,
     });
-    const row = listLedgerByRun(db, run.id)[0]!;
-    const total = row.inputTokens + row.outputTokens;
-    expect(total).toBe(1_250);
-    expect(row.costUsdMicros).toBeGreaterThan(0);
-    expect(ledgerTokenLabel(total, row.source)).toBe(ledgerTokenLabel(total, "provider_usage"));
-    expect(ledgerCostLabel(row.costUsdMicros, row.costModel)).toBe(ledgerCostLabel(row.costUsdMicros, "metered"));
+    appendLedgerEntry(db, { ...base, runId: runEarlier.id, inputTokens: 502, ts: earlierToday });
+    appendLedgerEntry(db, { ...base, runId: runCurrent.id, inputTokens: 3_439, ts: now });
+
+    const sqlToday = ledgerTokensForToday(db, now);
+    expect(sqlToday).toBe(3_941);
+
+    const spendSummary = loadSpendSummary(db, now);
+    expect(spendSummary.today.tokens).toBe(sqlToday);
+
+    const stateToday = loadState(db).spendSummary.today.tokens;
+    expect(stateToday).toBe(sqlToday);
+
+    const getSpendToday = buildSpendReport(
+      db,
+      { scope: "global", window: "day", groupBy: "provider" },
+      now,
+    );
+    expect(reportTokens(getSpendToday)).toBe(sqlToday);
+
+    const thisRun = buildSpendUpdate(db, session, runCurrent.id, now);
+    const thisRunTokens =
+      thisRun.tokens.input +
+      thisRun.tokens.output +
+      thisRun.tokens.cacheRead +
+      thisRun.tokens.cacheWrite;
+    expect(thisRunTokens).toBe(3_439);
+
+    expect(spendSummary.today.tokens).not.toBe(0);
+    expect(spendSummary.today.tokens).toBeGreaterThanOrEqual(thisRunTokens);
   });
 
   test("a malformed tool call changes nothing on disk", async () => {
@@ -157,6 +237,13 @@ describe("what Purser promises", () => {
 
     const gate = gateToolCall("write_file", '{"path":"README.md","content":', REGISTERED);
     expect(gate.ok).toBe(false);
+    expect(readFileSync(target, "utf8")).toBe(before);
+
+    const erasedFileGate = gateToolCall("write_file", ERASED_FILE_GATE_RAW, REGISTERED);
+    expect(erasedFileGate.ok).toBe(false);
+    if (!erasedFileGate.ok) {
+      expect(erasedFileGate.reason).toContain("Invalid JSON");
+    }
     expect(readFileSync(target, "utf8")).toBe(before);
 
     const emptyContent = gateToolCall(
@@ -198,16 +285,58 @@ describe("what Purser promises", () => {
     expect(ledgerTokenLabel(4321, "provider_usage")).toBe("4,321");
   });
 
-  test("the config directory and everything in it is private to the user", () => {
-    const home = tempHome();
-    loadOrCreateConfig();
-    const dir = purserDir();
-    expect(dir).toBe(home);
-    const dirMode = statSync(dir).mode & 0o777;
-    expect(dirMode).toBe(0o700);
-    const configMode = statSync(join(dir, "config.json")).mode & 0o777;
-    expect(configMode).toBe(0o600);
-    chmodSync(join(dir, "config.json"), 0o644);
-    expect((statSync(join(dir, "config.json")).mode & 0o777) !== 0o600).toBe(true);
+  test("the config directory and everything in it is private to the user", async () => {
+    const previousUmask = process.umask(0o022);
+    try {
+      const home = tempHome();
+      loadOrCreateConfig();
+      setSecret("grok", "sk-test-key-not-real");
+      appendAudit(home, { ts: new Date().toISOString(), type: "run_started", runId: "run_perm" });
+
+      const db = openSqliteDatabase(`sqlite://${join(home, "purser.sqlite")}`);
+      await seedDefaults(db);
+      const workspace = insertWorkspace(db, {
+        name: "Purser",
+        absPath: process.cwd(),
+        gitRemote: null,
+      });
+      const session = insertSession(db, {
+        workspaceId: workspace.id,
+        title: "perm",
+        providerId: "echo",
+        modelId: "echo-v1",
+        permissionMode: "ask",
+      });
+      const run = insertRun(db, session.id);
+      appendLedgerEntry(db, {
+        workspaceId: workspace.id,
+        sessionId: session.id,
+        runId: run.id,
+        providerId: "echo",
+        model: "echo-v1",
+        costModel: "local",
+        inputTokens: 1,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        costUsdMicros: null,
+        source: "provider_usage",
+        ts: new Date(),
+      });
+
+      writeStaged(session.id, {
+        path: "README.md",
+        newContent: "staged secret source\n",
+        oldContent: "before\n",
+        patch: "@@\n-staged\n+staged secret source",
+        added: 1,
+        removed: 1,
+      });
+
+      expect(purserDir()).toBe(home);
+      walkConfigTree(home);
+    } finally {
+      process.umask(previousUmask);
+    }
   });
 });

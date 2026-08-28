@@ -38,12 +38,22 @@ bun run typecheck
 | Provider | Needs |
 | --- | --- |
 | **Echo** | nothing — use it to check the console works |
-| **Ollama** | `ollama serve` running, at least one model pulled with tool support (e.g. `ollama pull qwen2.5:7b-instruct`) |
+| **Ollama** | `ollama serve` running + a **coder-tuned** model pulled (see **Ollama models** below) |
 | **Claude Code** | `npm i -g @anthropic-ai/claude-code`, then `claude` → `/login`; requires a Claude Pro or Max plan. Also `bun add @anthropic-ai/claude-agent-sdk` in this repo if the SDK package is missing |
 | **Codex / Cursor CLI / Gemini CLI** | their CLI installed and logged in (`codex`, `cursor-agent`, `gemini`). Prefer `cursor-agent` over the short `agent` symlink — `agent` collides with other tools |
 | **Grok / Perplexity / OpenAI-compatible** | an API key, added in Settings |
 
 Unready providers show as blocked in the top-bar selector with the exact command to fix them. Purser will not start a run against a provider it already knows will fail.
+
+**Ollama models:** Purser sends all seven file tools (`read_file`, `write_file`, `apply_patch`, …) on every run. Many generic **instruct** models — including `qwen2.5:7b-instruct`, which declares tool support — still only call read/search tools and never `write_file` or `apply_patch`. Your run finishes with no proposed edit and it looks like Purser is broken; the tools were sent, the model just didn't use them.
+
+For coding tasks, pull a **coder-tuned** model and select it in the top-bar model picker:
+
+```bash
+ollama pull qwen2.5-coder:7b    # minimum for file edits; use 14b or 32b if you have VRAM
+```
+
+Do not rely on chat/instruct variants for edits unless you have verified they call write tools on your hardware.
 
 ## Troubleshooting
 
@@ -54,7 +64,8 @@ Unready providers show as blocked in the top-bar selector with the exact command
 | Claude Code: "Not logged in · Please run /login" | That `/login` is Claude's terminal command, not a Purser route. Run `claude` in a terminal, use `/login`, then reload Purser. |
 | Ollama: `llama-server` binary not found | Broken Ollama install. Reinstall from https://ollama.com (`curl -fsSL https://ollama.com/install.sh \| sh`), then `ollama serve`. |
 | Ollama: connection refused | Start it: `ollama serve`. |
-| No models / empty model list on Ollama | `ollama pull <model>` (pick one with tool support). |
+| No models / empty model list on Ollama | `ollama pull qwen2.5-coder:7b` (or larger), then pick it in the top bar. |
+| Ollama run reads files but never proposes an edit | Purser sent write tools; the model didn't call them. Switch from an instruct/chat model to a **coder** model (`qwen2.5-coder:7b` minimum). Instruct models often stop after `read_file` / `ripgrep_search` even when tool support is advertised. |
 | Agent asked for `README`, got a bare miss | `read_file` (and `list_dir`) now resolve an unambiguous extensionless hit (`README` → `README.md`) and otherwise return near matches: `Did you mean: README.md, …?` |
 | ripgrep_search fails with `Cause: …` | The tool row shows the cause inline (not just ✗). Typical fix: restart Purser from a terminal, or install [ripgrep](https://github.com/BurntSushi/ripgrep). The runner also prepends Cursor/VS Code bundled `rg` and your login-shell PATH at startup. |
 

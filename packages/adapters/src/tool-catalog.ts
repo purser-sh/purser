@@ -45,7 +45,7 @@ export const ADAPTER_TOOL_SURFACES: Record<string, AdapterToolSurface> = {
   ollama: {
     kind: "purser_hosted",
     tools: purserHostedTools(true),
-    note: "All seven Purser tools are sent in /chat/completions; the model must support tool calling.",
+    note: "All seven Purser tools are sent in /chat/completions. Use a coder-tuned model (e.g. qwen2.5-coder:7b+); generic instruct models often skip write_file/apply_patch.",
   },
   grok: {
     kind: "purser_hosted",

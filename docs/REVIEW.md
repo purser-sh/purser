@@ -49,11 +49,11 @@ Purser’s claimed gap is **append-only token ledger + budget governor + hash-ch
 - Zod protocol, SQLite persistence, secrets in a 0600 file
 - Websocket Origin/Host allowlists; non-browser upgrades require the runner token
 - `/__purser/config` same-origin only in Vite development; production Vite and the runner return 404. Packaged HTML injects the token.
-- `/health` returns `{ ok: true, protocolVersion: 2 }` only
+- `/health` returns `{ ok: true, protocolVersion: 4 }` only
 - Pairing codes: Crockford ≥ 8 chars, TTL 120s, single use, rate limits
 - Bypass TTL + run cap, non-dismissible banner, bypass tool calls in `audit.jsonl`
 - Token ledger (`token_ledger`, append-only). Grok and Perplexity token rates from official pages (`asOf` 2026-08-25). OpenAI-compatible models stay **unpriced**. Override with `~/.purser/pricing.json`. See [METERING.md](METERING.md).
-- Budget governor: `budgets` table, pre-run / in-flight gates, `spend_update`, warn / ask / hard stop. Protocol version **2**.
+- Budget governor: `budgets` table, pre-run / in-flight gates, `spend_update`, warn / ask / hard stop. Protocol version **4**.
 - Hash-chained `~/.purser/audit.jsonl` (0600). Verify with `bun run purser -- audit verify` from a clone, or `./dist/bin/purser audit verify` after compile. Rotation at 64 MB.
 - Packaged companion: `bun run compile` embeds the UI. First run of the binary opens the browser and never prints the token. See [RELEASING.md](RELEASING.md).
 
@@ -66,7 +66,7 @@ Purser’s claimed gap is **append-only token ledger + budget governor + hash-ch
 | Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `PURSER_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
 | Anthropic tokenizer package | `packages/pricing/src/tokenizer.ts` | `gpt-tokenizer` is shipped. `@anthropic-ai/tokenizer` is **not** installed; Claude prompts still use the OpenAI encoder. Heuristic `ceil(chars/4)` is last-resort if encode throws. |
 | Public GitHub Release / Homebrew tap / signed binaries | `docs/RELEASING.md` | Compile script and CI workflow exist. No tagged public release. Formula sha256 values are zeros. Signing secrets are not in this repo. |
-| License and Purser pricing | `LICENSE`, `PRICING.md` | **Human decision.** Files exist as placeholders. |
+| Purser pricing | `PRICING.md` | **Human decision.** License is **Apache-2.0** (`LICENSE`). |
 
 **Echo is a fake agent.** If the UI says “You said: …” and proposes `+# echoed` on `README.md`, you are testing the console, not a real model. Switch provider on the right to Claude / Codex / Cursor / Gemini / Grok / Ollama.
 
@@ -120,7 +120,7 @@ Paste an `origin` URL on a folder that is already a git repo. Purser runs `git r
 
 ## 4. Architecture
 
-Two modes share **one websocket protocol** (`packages/protocol`, version `2`). The cloud never mounts your laptop disk. The **runner** is the only process allowed to see filesystem paths.
+Two modes share **one websocket protocol** (`packages/protocol`, version `4`). The cloud never mounts your laptop disk. The **runner** is the only process allowed to see filesystem paths.
 
 ### 4.1 Layers
 
@@ -221,7 +221,7 @@ Monorepo: Turborepo + Bun workspaces, TypeScript strict.
 apps/web                 operator console + /phone
 apps/runner              websocket API, agents, watch, voice, git
 apps/relay               pairing proxy — no store; post-pair frames are sealed
-packages/protocol        zod wire contracts (no any)
+packages/protocol        zod wire contracts (protocol v4; no any)
 packages/db              sqlite now, postgres schema ready
 packages/adapters        echo / claude / cli / generic LLM / MCP
 packages/voice           VAD + optional OpenAI STT/TTS
@@ -269,7 +269,7 @@ install.sh               download + SHA256SUMS verify (needs PURSER_REPO)
 
 ## 6. Protocol (clients and runner speak this)
 
-Every frame: `{ id, type, payload }`. Zod `.strict()` — extra keys fail. Protocol version is `2` on `hello`. A v1 client gets a typed `protocol_version` error.
+Every frame: `{ id, type, payload }`. Zod `.strict()` — extra keys fail. Protocol version is `4` on `hello`. An older client gets a typed `protocol_version` error.
 
 ### Client → runner
 
@@ -415,7 +415,7 @@ Read in this order:
 10. `apps/web/src/components/ChatPane.tsx` and `RightPanel.tsx` — coach, inbox, git, files, bypass banner, spend meter.
 11. `apps/runner/src/ui-serve.ts` + [docs/RELEASING.md](RELEASING.md) — embedded UI and compile.
 12. `extensions/vscode/README.md` — IDE must stay a client. Non-browser upgrades need `Authorization: Bearer`.
-13. `LICENSE` and `PRICING.md` — placeholders. A human must choose.
+13. `LICENSE` is **Apache-2.0**. `PRICING.md` — Purser's own price not decided yet.
 
 Sign-off questions:
 
@@ -424,7 +424,7 @@ Sign-off questions:
 - Do you accept **folder watch on the laptop only**, never as a cloud `/home` path?
 - Do you accept **cells** as the million-user story, not one SQLite?
 - Do you accept the **spend ledger / budget / audit** wedge, given the 2026 orchestrator field?
-- Which **license** and which **Purser price** (if any)?
+- Which **Purser price** (if any)?
 - Should marketplace VS Code/Cursor extensions be the next build, or hosted cells, or more adapters?
 
 More product updates can land on this skeleton without rewriting the console.

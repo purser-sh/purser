@@ -112,8 +112,8 @@ bun run compile
 | --- | --- |
 | **0** | Loopback Host/Origin guards, no CORS on config, pairing frames sealed after pair, secrets out of SQLite |
 | **1** | Append-only token ledger; official catalog only; unpriced models stay `NULL` cost (never invent dollars) |
-| **2** | Budget governor (token + USD caps); spend UI |
-| **3** | Hash-chained `~/.purser/audit.jsonl` (mode `0600`); `bun run purser -- audit verify` (or `./dist/bin/purser audit verify` after compile); path redaction |
+| **2** | Budget governor (token + USD caps) with **pre-run gate** (blocks over-cap runs before the agent starts); spend UI |
+| **3** | Hash-chained `~/.purser/audit.jsonl` (mode `0600`); `bun run purser -- audit verify` (or `./dist/bin/purser audit verify` after compile) with per-break chain diagnostics; path redaction |
 | **4** | Prompt coach: live token count under the composer (`exact` / `≈` for the typed prompt), with a one-click shorter rewrite when one exists. Counts **this prompt**, not the agent loop — the run meter in the top bar is the spend headline |
 | **5** | `bun run compile` / `compile:all`; UI embedded in the binary; CI release workflow; token never printed |
 | **6** | Public README vs architecture docs; competitor matrix; platform-risk notes |
@@ -128,12 +128,12 @@ Spend is the product surface; the accent colour marks **one primary action per s
 | **1 — Foundation** | Design tokens in `apps/web/src/styles/tokens.css`. Theme toggle. User messages: quiet left rule. Accent copper `#C2560F` / `#F0743A`. |
 | **2 — Layout** | Top bar: brand, **provider · model · permission**, compact run meter. Right column: **Spend · Files · Setup**. |
 | **3 — Run meter** | This run / today / month from the ledger; click opens Spend. |
-| **4 — Cards** | `DecisionCard`, `DiffCard`, `ToolRow`, permission and budget prompts. |
+| **4 — Cards** | `DecisionCard`, `DiffCard`, `ToolRow` (300px scroll cap + “Show all”), permission and budget prompts, `ProviderBlockedCard` with fix commands. |
 | **5 — Polish** | Command palette (⌘K), first-run tip, toasts, empty-session prompts. Prompt coach under the composer (token count + optional shorter rewrite). |
 
 **Browser vs runner tokenizers:** The prompt coach runs in the browser (Vite aliases `@purser-sh/pricing` → `browser.ts`). Anthropic ids stay **approximate** in-browser; the runner keeps exact Claude counts for the ledger. See [docs/METERING.md](docs/METERING.md).
 
-Also shipped: workspaces, sessions, diffs, permission modes (`ask` / `auto_edit` / `bypass` with TTL), adapters (Echo, Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity), session git worktrees, drop-folder → `.inbox/`, voice + `/phone`.
+Also shipped: workspaces, sessions (title from first prompt), diffs, permission modes (`ask` / `auto_edit` / `bypass` with TTL), adapters (Echo, Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity), session git worktrees at HEAD, `read_file` / `list_dir` near-match hints, runner PATH augmentation for `ripgrep_search`, drop-folder → `.inbox/`, voice + `/phone`.
 
 ## Not shipped
 

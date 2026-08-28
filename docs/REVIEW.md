@@ -54,7 +54,7 @@ Purser’s claimed gap is **append-only token ledger + budget governor + hash-ch
 - Bypass TTL + run cap, non-dismissible banner, bypass tool calls in `audit.jsonl`
 - Token ledger (`token_ledger`, append-only). Grok and Perplexity token rates from official pages (`asOf` 2026-08-25). OpenAI-compatible models stay **unpriced**. Override with `~/.purser/pricing.json`. See [METERING.md](METERING.md).
 - Budget governor: `budgets` table, pre-run / in-flight gates, `spend_update`, warn / ask / hard stop. Protocol version **2**.
-- Hash-chained `~/.purser/audit.jsonl` (0600). Verify with `bun apps/runner/src/index.ts audit verify` or `purser audit verify` on the compiled binary. Rotation at 64 MB.
+- Hash-chained `~/.purser/audit.jsonl` (0600). Verify with `bun run purser -- audit verify` from a clone, or `./dist/bin/purser audit verify` after compile. Rotation at 64 MB.
 - Packaged companion: `bun run compile` embeds the UI. First run of the binary opens the browser and never prints the token. See [RELEASING.md](RELEASING.md).
 
 ### Specified, not implemented (review the contract, not a fake stack)
@@ -235,8 +235,8 @@ docs/RELEASING.md        compile, embed UI, codesign/Authenticode secrets, check
 docs/COMPETITORS.md      honest matrix vs other orchestrators (asOf 2026-08-25)
 docs/PLATFORM-RISK.md    vendor terms we actually opened, not guesses
 docs/REVIEW.md           this file
-LICENSE                  **not chosen** — human decision
-PRICING.md               Purser’s own price **not chosen** — human decision
+LICENSE                  **Apache-2.0** (see repo root)
+PRICING.md               Purser's own price **not decided** — human decision
 Formula/purser.rb     Homebrew template (sha256 zeros until a real release)
 install.sh               download + SHA256SUMS verify (needs PURSER_REPO)
 ```

@@ -17,6 +17,12 @@ bun run dev
 
 Then open **http://127.0.0.1:7410**, open a folder, pick a provider, and send a prompt. Use **Echo** first to confirm the console works before wiring a real provider.
 
+Verify the audit chain (works immediately after `bun install`, no compile step):
+
+```bash
+bun run purser -- audit verify
+```
+
 Requires [Bun](https://bun.sh) ≥ **1.3.14**.
 
 | Process | Port |
@@ -93,8 +99,11 @@ curl -fsSL purser.sh/install | sh   # does not work yet — do not use
 
 Use the Quickstart above until **v0.1.0**. Details for maintainers: [docs/RELEASING.md](docs/RELEASING.md).
 
+`bun run compile` builds the web UI (Vite), embeds it in the runner, and compiles a standalone binary — **no separate manual UI build**. Output lands in `dist/bin/` (e.g. `dist/bin/purser-linux-x64` on Linux, plus a `dist/bin/purser` symlink):
+
 ```bash
-bun run compile   # embeds the UI in a local binary once you have built apps/web
+bun run compile
+./dist/bin/purser audit verify
 ```
 
 ## Done (Phases 0–7)
@@ -104,7 +113,7 @@ bun run compile   # embeds the UI in a local binary once you have built apps/web
 | **0** | Loopback Host/Origin guards, no CORS on config, pairing frames sealed after pair, secrets out of SQLite |
 | **1** | Append-only token ledger; official catalog only; unpriced models stay `NULL` cost (never invent dollars) |
 | **2** | Budget governor (token + USD caps); spend UI |
-| **3** | Hash-chained `~/.purser/audit.jsonl` (mode `0600`); `audit verify` CLI; path redaction |
+| **3** | Hash-chained `~/.purser/audit.jsonl` (mode `0600`); `bun run purser -- audit verify` (or `./dist/bin/purser audit verify` after compile); path redaction |
 | **4** | Prompt coach: live token count under the composer (`exact` / `≈` for the typed prompt), with a one-click shorter rewrite when one exists. Counts **this prompt**, not the agent loop — the run meter in the top bar is the spend headline |
 | **5** | `bun run compile` / `compile:all`; UI embedded in the binary; CI release workflow; token never printed |
 | **6** | Public README vs architecture docs; competitor matrix; platform-risk notes |
@@ -133,6 +142,7 @@ Also shipped: workspaces, sessions, diffs, permission modes (`ask` / `auto_edit`
 - A Google / Gemini local tokenizer (coach counts for `gemini_cli` stay approximate in-browser)
 - A tagged public release, Homebrew tap with real sha256, or signing secrets
 - Purser's own price (see [PRICING.md](PRICING.md))
+- Web console bundle code-splitting (current production build is ~3.6 MB / ~1.6 MB gzipped — tolerable locally, worth trimming before v1)
 - Commit provenance trailers / `purser provenance` (Phase C)
 - Discriminated `Spend` union without `usdMicros` on subscription runs (Phase B2)
 - Security decision cards (`sec.*` rules) and full DecisionCard keyboard focus ring audit

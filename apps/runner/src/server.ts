@@ -311,6 +311,7 @@ async function startRunAfterGate(
   }
   consumeBypassRun(ctx.db, refreshed);
   const run = prepareRun(ctx.db, refreshed.id, prompt);
+  broadcast(ctx, { type: "state", payload: loadState(ctx.db) });
   const controller = new AbortController();
   ctx.activeRuns.set(run.id, controller);
   broadcast(ctx, { id: replyId, type: "run_started", payload: { runId: run.id, sessionId: run.sessionId } });

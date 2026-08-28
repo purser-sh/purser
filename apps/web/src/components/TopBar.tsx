@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRunner } from "@/lib/client";
 import { isBlocked, shortReason } from "@/lib/readiness";
+import { ollamaModelEditWarning } from "@/lib/ollama-models";
 import { cycleTheme, readThemePreference, themeLabel, type ThemePreference } from "@/lib/theme";
 import { PERMISSION_MODES, selectedSession, useDeckStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,8 @@ export function TopBar(props: { onSettings: () => void }) {
       : null;
   const spend = session ? lastSpendBySession[session.id] : undefined;
   const costModel = session ? (costModelByProvider[session.providerId] ?? "local") : "local";
+  const ollamaEditWarning =
+    session?.providerId === "ollama" ? ollamaModelEditWarning(storedModelId) : null;
 
   async function setProvider(providerId: string) {
     if (session === undefined) {
@@ -224,6 +227,9 @@ export function TopBar(props: { onSettings: () => void }) {
               );
             })}
           </div>
+          {ollamaEditWarning ? (
+            <p className="w-full basis-full text-center text-[length:var(--text-2xs)] text-warn">{ollamaEditWarning}</p>
+          ) : null}
         </div>
       ) : (
         <p className="mx-auto text-[length:var(--text-xs)] text-muted-foreground">Open a folder to start a session</p>

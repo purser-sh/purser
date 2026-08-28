@@ -9,7 +9,8 @@
     "test": "turbo test",
     "typecheck": "turbo typecheck",
     "compile": "bun scripts/compile.ts",
-    "compile:all": "bun scripts/compile.ts --all"
+    "compile:all": "bun scripts/compile.ts --all",
+    "purser": "bun apps/runner/src/index.ts"
   },
   "devDependencies": {
     "turbo": "^2.5.8",

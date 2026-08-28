@@ -1,6 +1,7 @@
 import type { AgentEvent } from "@purser-sh/protocol";
 import { Check, ChevronRight, X } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 function formatUnknown(value: unknown): string {
@@ -24,16 +25,30 @@ export function ToolRow(props: {
   result?: Extract<AgentEvent, { kind: "tool_result" }>;
 }) {
   const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const name = props.call?.name ?? props.result?.toolId ?? "tool";
   const summary = props.call?.summary ?? "";
   const ok = props.result?.ok;
   const ms = props.result?.ms;
+  const body = [
+    props.call ? formatUnknown(props.call.input) : "",
+    props.result ? formatUnknown(props.result.output) : "",
+  ]
+    .filter((part) => part.length > 0)
+    .join("\n\n");
 
   return (
     <div className="w-full font-mono text-[length:var(--text-xs)] text-muted-foreground">
       <button
         className="flex w-full items-center gap-2 rounded-[var(--radius-control)] px-1 py-1 text-left hover:bg-surface-2"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          setOpen((value) => {
+            if (value) {
+              setShowAll(false);
+            }
+            return !value;
+          });
+        }}
         type="button"
       >
         <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform", open ? "rotate-90" : "")} />
@@ -53,10 +68,27 @@ export function ToolRow(props: {
         ) : null}
       </button>
       {open ? (
-        <pre className="mt-1 overflow-x-auto rounded-[var(--radius-control)] bg-surface-2 p-2 text-[length:var(--text-2xs)] text-text-2">
-          {props.call ? formatUnknown(props.call.input) : null}
-          {props.result ? `\n${formatUnknown(props.result.output)}` : null}
-        </pre>
+        <div className="mt-1">
+          <pre
+            className={cn(
+              "overflow-auto rounded-[var(--radius-control)] bg-surface-2 p-2 text-[length:var(--text-2xs)] text-text-2",
+              showAll ? "max-h-[min(60vh,28rem)]" : "max-h-[300px]",
+            )}
+          >
+            {body.length > 0 ? body : " "}
+          </pre>
+          {!showAll && body.length > 800 ? (
+            <Button
+              className="mt-1 h-7 px-2 text-[length:var(--text-2xs)]"
+              onClick={() => setShowAll(true)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              Show all
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

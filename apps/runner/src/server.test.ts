@@ -132,6 +132,8 @@ describe("runner websocket", () => {
     expect(state.payload.events.some((event) => event.kind === "user_message")).toBe(true);
     expect(state.payload.events.some((event) => event.kind === "text")).toBe(true);
     expect(state.payload.events.some((event) => event.kind === "done")).toBe(true);
+    const titled = state.payload.sessions.find((item) => item.id === createdSession.payload.session.id);
+    expect(titled?.title).toBe("hello deck");
 
     ws.terminate();
     await server.close();

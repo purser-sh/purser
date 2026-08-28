@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { purserDir } from "./config.ts";
 
 export const ZERO_HASH = "0".repeat(64);
@@ -141,17 +141,93 @@ export function appendAudit(home: string, event: AuditEvent, options: AppendAudi
   return chained;
 }
 
-export type AuditVerifyResult =
-  | { ok: true; files: number; lines: number }
-  | { ok: false; file: string; line: number; detail: string };
+export type AuditBreakKind = "not_json" | "missing_prev_hash" | "not_canonical" | "prev_hash_mismatch";
+
+export type AuditVerifyBreak = {
+  file: string;
+  line: number;
+  kind: AuditBreakKind;
+  expectedHash: string;
+  foundHash: string;
+  entry: AuditEvent | null;
+};
+
+export type AuditVerifyResult = {
+  ok: boolean;
+  home: string;
+  primaryFile: string | null;
+  files: number;
+  totalEntries: number;
+  verifiedEntries: number;
+  dateFrom: string | null;
+  dateTo: string | null;
+  break: AuditVerifyBreak | null;
+};
+
+function parseAuditEvent(parsed: Record<string, unknown>): AuditEvent | null {
+  if (typeof parsed.ts !== "string" || typeof parsed.type !== "string") {
+    return null;
+  }
+  const event: AuditEvent = { ts: parsed.ts, type: parsed.type };
+  for (const key of [
+    "sessionId",
+    "runId",
+    "workspaceId",
+    "toolName",
+    "toolId",
+    "action",
+    "path",
+    "providerId",
+    "settingKey",
+    "detail",
+    "outcome",
+  ] as const) {
+    const value = parsed[key];
+    if (typeof value === "string") {
+      event[key] = value;
+    }
+  }
+  if (typeof parsed.bypassed === "boolean") {
+    event.bypassed = parsed.bypassed;
+  }
+  return event;
+}
+
+function trackTimestamp(range: { from: string | null; to: string | null }, ts: string | undefined): void {
+  if (ts === undefined) {
+    return;
+  }
+  const day = ts.slice(0, 10);
+  if (range.from === null || day < range.from) {
+    range.from = day;
+  }
+  if (range.to === null || day > range.to) {
+    range.to = day;
+  }
+}
 
 export function verifyAudit(home: string): AuditVerifyResult {
   const files = listAuditFiles(home);
+  const primaryFile = files[0] ?? null;
+  const range = { from: null as string | null, to: null as string | null };
   if (files.length === 0) {
-    return { ok: true, files: 0, lines: 0 };
+    return {
+      ok: true,
+      home,
+      primaryFile: null,
+      files: 0,
+      totalEntries: 0,
+      verifiedEntries: 0,
+      dateFrom: null,
+      dateTo: null,
+      break: null,
+    };
   }
+
   let expected = ZERO_HASH;
-  let lines = 0;
+  let totalEntries = 0;
+  let verifiedEntries = 0;
+
   for (const file of files) {
     const contents = readFileSync(file, "utf8");
     const fileLines = contents.split("\n").filter((line) => line.length > 0);
@@ -160,32 +236,201 @@ export function verifyAudit(home: string): AuditVerifyResult {
       if (raw === undefined) {
         continue;
       }
-      lines += 1;
+      totalEntries += 1;
+      const lineNo = index + 1;
+
       let parsed: unknown;
       try {
         parsed = JSON.parse(raw);
       } catch {
-        return { ok: false, file, line: index + 1, detail: "line is not JSON" };
+        return {
+          ok: false,
+          home,
+          primaryFile,
+          files: files.length,
+          totalEntries,
+          verifiedEntries,
+          dateFrom: range.from,
+          dateTo: range.to,
+          break: {
+            file,
+            line: lineNo,
+            kind: "not_json",
+            expectedHash: shortHash(expected),
+            foundHash: "—",
+            entry: null,
+          },
+        };
       }
+
       if (!isRecord(parsed) || typeof parsed.prevHash !== "string") {
-        return { ok: false, file, line: index + 1, detail: "missing prevHash" };
+        return {
+          ok: false,
+          home,
+          primaryFile,
+          files: files.length,
+          totalEntries,
+          verifiedEntries,
+          dateFrom: range.from,
+          dateTo: range.to,
+          break: {
+            file,
+            line: lineNo,
+            kind: "missing_prev_hash",
+            expectedHash: shortHash(expected),
+            foundHash: "—",
+            entry: isRecord(parsed) ? parseAuditEvent(parsed) : null,
+          },
+        };
       }
+
       const canonical = canonicalJson(parsed);
       if (canonical !== raw) {
-        return { ok: false, file, line: index + 1, detail: "line is not canonical JSON" };
+        return {
+          ok: false,
+          home,
+          primaryFile,
+          files: files.length,
+          totalEntries,
+          verifiedEntries,
+          dateFrom: range.from,
+          dateTo: range.to,
+          break: {
+            file,
+            line: lineNo,
+            kind: "not_canonical",
+            expectedHash: shortHash(expected),
+            foundHash: shortHash(parsed.prevHash),
+            entry: parseAuditEvent(parsed),
+          },
+        };
       }
+
+      trackTimestamp(range, typeof parsed.ts === "string" ? parsed.ts : undefined);
+
       if (parsed.prevHash !== expected) {
-        return { ok: false, file, line: index + 1, detail: `prevHash mismatch: expected ${expected}` };
+        return {
+          ok: false,
+          home,
+          primaryFile,
+          files: files.length,
+          totalEntries,
+          verifiedEntries,
+          dateFrom: range.from,
+          dateTo: range.to,
+          break: {
+            file,
+            line: lineNo,
+            kind: "prev_hash_mismatch",
+            expectedHash: shortHash(expected),
+            foundHash: shortHash(parsed.prevHash),
+            entry: parseAuditEvent(parsed),
+          },
+        };
       }
+
+      verifiedEntries += 1;
       expected = sha256Hex(canonical);
     }
   }
-  return { ok: true, files: files.length, lines };
+
+  return {
+    ok: true,
+    home,
+    primaryFile,
+    files: files.length,
+    totalEntries,
+    verifiedEntries: totalEntries,
+    dateFrom: range.from,
+    dateTo: range.to,
+    break: null,
+  };
+}
+
+function shortHash(fullHex: string): string {
+  if (fullHex === ZERO_HASH) {
+    return `sha256:${fullHex.slice(0, 4)}…`;
+  }
+  return `sha256:${fullHex.slice(0, 6)}…`;
+}
+
+function formatEntryCount(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+function formatDateRange(from: string | null, to: string | null): string {
+  if (from === null || to === null) {
+    return "no dated entries";
+  }
+  if (from === to) {
+    return from;
+  }
+  return `${from} to ${to}`;
+}
+
+function breakHeadline(kind: AuditBreakKind): string {
+  switch (kind) {
+    case "not_json":
+      return "line is not valid JSON";
+    case "missing_prev_hash":
+      return "missing prevHash";
+    case "not_canonical":
+      return "entry was edited (canonical hash mismatch)";
+    case "prev_hash_mismatch":
+      return "chain broken";
+  }
+}
+
+function formatBreakEntry(entry: AuditEvent | null): string[] {
+  if (entry === null) {
+    return [];
+  }
+  const parts: string[] = [];
+  if (entry.runId !== undefined) {
+    parts.push(`run ${entry.runId}`);
+  }
+  if (entry.providerId !== undefined) {
+    parts.push(entry.providerId);
+  } else if (entry.type.includes("run") || entry.toolName !== undefined) {
+    parts.push(entry.type);
+  }
+  const detail = parts.length > 0 ? parts.join(" · ") : entry.type;
+  const lines = [`  ${detail}`];
+  if (entry.ts.length > 0) {
+    lines.push(`  written ${entry.ts}`);
+  }
+  return lines;
 }
 
 export function printVerify(result: AuditVerifyResult): string {
+  const lines: string[] = [];
+  const reading = result.primaryFile ?? join(result.home, "audit.jsonl");
+  lines.push(`reading ${reading}`);
+
+  const range = formatDateRange(result.dateFrom, result.dateTo);
+  lines.push(`entries ${formatEntryCount(result.totalEntries)} · ${range}`);
+  lines.push(`chain sha256, genesis ${ZERO_HASH.slice(0, 4)}…`);
+
   if (result.ok) {
-    return `audit ok: ${result.lines} lines in ${result.files} file(s)`;
+    lines.push(`✓ ${formatEntryCount(result.verifiedEntries)} of ${formatEntryCount(result.totalEntries)} entries verified`);
+    return lines.join("\n");
   }
-  return `audit break at ${result.file}:${result.line}: ${result.detail}`;
+
+  const brk = result.break;
+  if (brk === null) {
+    lines.push("✗ audit verification failed");
+    return lines.join("\n");
+  }
+
+  const fileLabel = basename(brk.file);
+  lines.push(`✗ ${breakHeadline(brk.kind)} at ${fileLabel}:${brk.line}`);
+  if (brk.kind === "prev_hash_mismatch" || brk.kind === "not_canonical") {
+    lines.push(`  expected ${brk.expectedHash}`);
+    lines.push(`  found    ${brk.foundHash}`);
+  } else if (brk.kind === "missing_prev_hash") {
+    lines.push(`  expected ${brk.expectedHash}`);
+  }
+  lines.push(...formatBreakEntry(brk.entry));
+  lines.push(`✗ ${formatEntryCount(result.verifiedEntries)} of ${formatEntryCount(result.totalEntries)} entries verified`);
+  return lines.join("\n");
 }

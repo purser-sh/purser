@@ -3,11 +3,12 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { which } from "./cli/which.ts";
 
-const SUPPLEMENTAL_BIN_DIRS = [
+/** Always merged when present — apt/brew installs land here. */
+export const STANDARD_BIN_DIRS = ["/usr/local/bin", "/usr/bin", "/bin", "/opt/homebrew/bin"] as const;
+
+const EDITOR_BIN_DIRS = [
   "/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin",
   "/usr/share/code/resources/app/node_modules/@vscode/ripgrep/bin",
-  "/opt/homebrew/bin",
-  "/usr/local/bin",
 ];
 
 function mergePathFront(...segments: Array<string | undefined>): string {
@@ -40,18 +41,21 @@ function loginShellPath(): string | undefined {
   return result.status === 0 && path !== undefined && path.length > 0 ? path : undefined;
 }
 
-function supplementalBinDirs(): string[] {
-  const home = process.env.HOME ?? "";
-  const dirs = [...SUPPLEMENTAL_BIN_DIRS, join(home, ".local", "bin")];
-  return dirs.filter((dir) => existsSync(dir));
+function existingDirs(dirs: readonly string[]): string {
+  return dirs.filter((dir) => existsSync(dir)).join(":");
 }
 
 /**
- * Merge login-shell and editor-bundled bin dirs into the runner process PATH.
- * GUI-launched runners often inherit a minimal PATH that omits Cursor/VS Code's
- * bundled `rg`, even though the user's interactive shell has it.
+ * Merge editor-bundled, standard system, login-shell, and user bin dirs into PATH.
+ * GUI-launched runners often inherit a minimal PATH (bun/pyenv only) that omits
+ * /usr/bin where apt-installed ripgrep lives, and Cursor's bundled rg.
  */
 export function augmentProcessPath(): void {
-  const extra = supplementalBinDirs().join(":");
+  const homeLocal = join(process.env.HOME ?? "", ".local", "bin");
+  const extra = existingDirs([
+    ...EDITOR_BIN_DIRS,
+    ...STANDARD_BIN_DIRS,
+    ...(existsSync(homeLocal) ? [homeLocal] : []),
+  ]);
   process.env.PATH = mergePathFront(extra, loginShellPath(), process.env.PATH);
 }

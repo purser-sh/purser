@@ -73,7 +73,7 @@ Do not rely on chat/instruct variants for edits unless you have verified they ca
 | No models / empty model list on Ollama | `ollama pull qwen2.5-coder:7b` (or larger), then pick it in the top bar. |
 | Ollama run reads files but never proposes an edit | Purser sent write tools; the model didn't call them. Switch from an instruct/chat model to a **coder** model (`qwen2.5-coder:7b` minimum). Instruct models often stop after `read_file` / `ripgrep_search` even when tool support is advertised. |
 | Agent asked for `README`, got a bare miss | `read_file` (and `list_dir`) now resolve an unambiguous extensionless hit (`README` → `README.md`) and otherwise return near matches: `Did you mean: README.md, …?` |
-| ripgrep_search fails with `Cause: …` | The tool row shows the cause inline (not just ✗). Typical fix: restart Purser from a terminal, or install [ripgrep](https://github.com/BurntSushi/ripgrep). The runner also prepends Cursor/VS Code bundled `rg` and your login-shell PATH at startup. |
+| ripgrep_search fails with `Cause: …` | The tool row shows the cause inline (not just ✗). The runner prepends standard system paths (`/usr/bin`, `/bin`, …), Cursor/VS Code bundled `rg`, and your login-shell PATH at startup — so apt-installed ripgrep is found even when the IDE inherits a minimal bun/pyenv-only PATH. Restart Purser after installing `ripgrep`. |
 
 ## Git worktrees and your working folder
 

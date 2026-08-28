@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { executeTool } from "./generic-llm/tools.ts";
@@ -119,6 +119,19 @@ describe("tool smoke against a real workspace", () => {
 
   test("ripgrep_search names invalid regex separately from PATH failures", async () => {
     const root = workspace();
+    const binDir = mkdtempSync(join(tmpdir(), ".tmp-rg-stub-"));
+    const stub = join(binDir, "rg");
+    writeFileSync(
+      stub,
+      `#!/bin/sh
+echo "rg: regex parse error:" >&2
+echo "    (?:[invalid)" >&2
+echo "error: unclosed character class" >&2
+exit 2
+`,
+    );
+    chmodSync(stub, 0o755);
+    process.env.PATH = binDir;
     const result = await executeTool({
       name: "ripgrep_search",
       args: { query: "[invalid" },

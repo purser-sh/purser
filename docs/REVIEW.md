@@ -63,7 +63,7 @@ Purser’s claimed gap is **append-only token ledger + budget governor + hash-ch
 | --- | --- | --- |
 | VS Code / Cursor marketplace extensions | `extensions/vscode/README.md` | Protocol notes only. No `.vsix`. |
 | Hosted HTTP control plane | `packages/integrations/src/control-plane.ts` | Types, scale gates, isolation rules, tenant hashing. No public API server. |
-| Live Postgres | `packages/db/src/schema.postgres.ts` | Schema ready. `PURSER_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
+| Live Postgres | `packages/db/src/schema.postgres.ts` | Table definitions only — no driver or migrations. `PURSER_DATABASE_URL=postgres://…` **throws** until a driver is wired. Companion uses SQLite. |
 | Anthropic tokenizer package | `packages/pricing/src/tokenizer.ts` | `gpt-tokenizer` is shipped. `@anthropic-ai/tokenizer` is **not** installed; Claude prompts still use the OpenAI encoder. Heuristic `ceil(chars/4)` is last-resort if encode throws. |
 | Public GitHub Release / Homebrew tap / signed binaries | `docs/RELEASING.md` | Compile script and CI workflow exist. No tagged public release. Formula sha256 values are zeros. Signing secrets are not in this repo. |
 | Purser pricing | `PRICING.md` | **Human decision.** License is **Apache-2.0** (`LICENSE`). |
@@ -222,7 +222,7 @@ apps/web                 operator console + /phone
 apps/runner              websocket API, agents, watch, voice, git
 apps/relay               pairing proxy — no store; post-pair frames are sealed
 packages/protocol        zod wire contracts (protocol v4; no any)
-packages/db              sqlite now, postgres schema ready
+packages/db              sqlite now; pg-core table defs only, no driver
 packages/adapters        echo / claude / cli / generic LLM / MCP
 packages/voice           VAD + optional OpenAI STT/TTS
 packages/prompt-coach    token estimate + compact rewrite (`gpt-tokenizer`; heuristic last-resort)

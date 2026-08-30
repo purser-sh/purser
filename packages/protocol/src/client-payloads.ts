@@ -279,3 +279,19 @@ export const LinkRepositoryPayloadSchema = z
   })
   .strict();
 export type LinkRepositoryPayload = z.infer<typeof LinkRepositoryPayloadSchema>;
+
+export const UpdateWorkspaceShellPayloadSchema = z
+  .object({
+    workspaceId: IdSchema,
+    runBashEnabled: z.boolean().optional(),
+    allowDestructiveShell: z.boolean().optional(),
+  })
+  .strict();
+export type UpdateWorkspaceShellPayload = z.infer<typeof UpdateWorkspaceShellPayloadSchema>;
+
+export const UndoShellPayloadSchema = z
+  .object({
+    sessionId: IdSchema,
+  })
+  .strict();
+export type UndoShellPayload = z.infer<typeof UndoShellPayloadSchema>;

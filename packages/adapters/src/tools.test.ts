@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gateToolCall } from "./tool-gate.ts";
 import { runGatedTool } from "./generic-llm/tools.ts";
+import { ApprovedShellCommand } from "./shell-execute.ts";
+import { classifyShellCommand } from "./shell-classify.ts";
 import { formatMissingPath, resolveRequestedPath, suggestNearPaths } from "./path-suggest.ts";
 import { which } from "./cli/which.ts";
 
@@ -22,7 +24,24 @@ async function executeTool(input: { name: string; args: Record<string, unknown>;
   if (!gate.ok) {
     return { ok: false, output: gate.reason, summary: gate.reason };
   }
-  return runGatedTool({ gate, cwd: input.cwd, mutationPolicy: "commit-immediate" });
+  if (gate.name === "run_bash") {
+    const command = (gate.args as { command: string }).command;
+    const classification = classifyShellCommand(command);
+    if (classification.kind === "refused") {
+      return { ok: false, output: classification.reason, summary: classification.reason };
+    }
+    return runGatedTool({
+      gate: gate as Extract<typeof gate, { name: "run_bash" }>,
+      cwd: input.cwd,
+      mutationPolicy: "commit-immediate",
+      approvedShell: ApprovedShellCommand.fromImmediate(command, classification),
+    });
+  }
+  return runGatedTool({
+    gate: gate as Extract<typeof gate, { name: Exclude<typeof gate.name, "run_bash"> }>,
+    cwd: input.cwd,
+    mutationPolicy: "commit-immediate",
+  });
 }
 
 function workspace(): string {

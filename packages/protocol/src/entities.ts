@@ -10,6 +10,9 @@ export const WorkspaceSchema = z
     absPath: AbsolutePathSchema,
     gitRemote: z.string().min(1).nullable(),
     createdAt: IsoDateTimeSchema,
+    /** Opt-in per workspace in Setup. Default off. */
+    runBashEnabled: z.boolean().default(false),
+    allowDestructiveShell: z.boolean().default(false),
   })
   .strict();
 export type Workspace = z.infer<typeof WorkspaceSchema>;

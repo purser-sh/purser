@@ -33,6 +33,8 @@ import {
   WatchFolderPayloadSchema,
   UnwatchFolderPayloadSchema,
   LinkRepositoryPayloadSchema,
+  UpdateWorkspaceShellPayloadSchema,
+  UndoShellPayloadSchema,
 } from "./client-payloads.ts";
 import { IdSchema } from "./primitives.ts";
 
@@ -115,6 +117,11 @@ export const ClientBudgetResponseMessageSchema = clientFrame("budget_response", 
 export const ClientWatchFolderMessageSchema = clientFrame("watch_folder", WatchFolderPayloadSchema);
 export const ClientUnwatchFolderMessageSchema = clientFrame("unwatch_folder", UnwatchFolderPayloadSchema);
 export const ClientLinkRepositoryMessageSchema = clientFrame("link_repository", LinkRepositoryPayloadSchema);
+export const ClientUpdateWorkspaceShellMessageSchema = clientFrame(
+  "update_workspace_shell",
+  UpdateWorkspaceShellPayloadSchema,
+);
+export const ClientUndoShellMessageSchema = clientFrame("undo_shell", UndoShellPayloadSchema);
 
 export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientHelloMessageSchema,
@@ -150,6 +157,8 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientWatchFolderMessageSchema,
   ClientUnwatchFolderMessageSchema,
   ClientLinkRepositoryMessageSchema,
+  ClientUpdateWorkspaceShellMessageSchema,
+  ClientUndoShellMessageSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;

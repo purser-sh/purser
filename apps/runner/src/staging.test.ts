@@ -33,7 +33,11 @@ describe("staged mutations safety", () => {
     if (!gate.ok) {
       return;
     }
-    const staged = await runGatedTool({ gate, cwd: root, mutationPolicy: "stage-only" });
+    const staged = await runGatedTool({
+      gate: gate as Extract<typeof gate, { name: "write_file" }>,
+      cwd: root,
+      mutationPolicy: "stage-only",
+    });
     expect(staged.ok).toBe(true);
     expect(staged.fileDiff?.staged).toBe(true);
     expect(readFileSync(target, "utf8")).toBe(before);
@@ -72,7 +76,11 @@ describe("immediate mutations in auto_edit", () => {
     if (!gate.ok) {
       return;
     }
-    const result = await runGatedTool({ gate, cwd: root, mutationPolicy: "commit-immediate" });
+    const result = await runGatedTool({
+      gate: gate as Extract<typeof gate, { name: "write_file" }>,
+      cwd: root,
+      mutationPolicy: "commit-immediate",
+    });
     expect(result.ok).toBe(true);
     expect(readFileSync(join(root, "note.txt"), "utf8")).toBe("beta\n");
     expect(result.fileDiff?.patch).toContain("-alpha");

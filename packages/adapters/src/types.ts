@@ -6,6 +6,15 @@ export interface PermissionDecision {
   detail: unknown;
 }
 
+export interface ShellRunOptions {
+  enabled: boolean;
+  allowDestructive: boolean;
+  prepareMutating?: (input: { command: string; restorePointId: string }) => Promise<{
+    undoAvailable: boolean;
+    undoNote: string;
+  }>;
+}
+
 export interface AdapterConfig {
   baseUrl: string | null;
   apiKey: string | null;
@@ -24,6 +33,7 @@ export interface RunInput {
   extraSystemPrompt?: string;
   config?: AdapterConfig;
   askPermission?: (request: PermissionDecision) => Promise<boolean>;
+  shell?: ShellRunOptions;
 }
 
 export interface HealthResult {

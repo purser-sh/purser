@@ -23,7 +23,14 @@ async function executeTool(input: { name: string; args: Record<string, unknown>;
   if (!gate.ok) {
     return { ok: false, output: gate.reason, summary: gate.reason };
   }
-  return runGatedTool({ gate, cwd: input.cwd, mutationPolicy: "commit-immediate" });
+  if (gate.name === "run_bash") {
+    throw new Error("adapter.test does not exercise run_bash");
+  }
+  return runGatedTool({
+    gate: gate as Extract<typeof gate, { name: Exclude<typeof gate.name, "run_bash"> }>,
+    cwd: input.cwd,
+    mutationPolicy: "commit-immediate",
+  });
 }
 
 describe("sandbox", () => {

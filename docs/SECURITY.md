@@ -28,7 +28,8 @@ Disclosure: there is no published security mailbox yet. Until launch, report iss
 | Pairing codes: Crockford base32, length ≥ 8 (~40 bits), TTL 120s, single use, max 5 attempts per code, max 20 attempts per source per minute, `timingSafeEqual` via SHA-256 digests. | Relay guessing and reuse. |
 | Relay frame seal: HKDF-SHA-256(pairing code) → AES-256-GCM. | Relay reading protocol payloads (including the runner token on `hello` from the phone path — the phone authenticates with the pairing code, not the runner token). |
 | Bypass: per-session re-confirm (type `bypass` + checkbox), TTL 30 minutes and 10 runs (configurable `bypassTtlMs` / `bypassMaxRuns`), non-dismissible banner, every tool call under bypass appended to `~/.purser/audit.jsonl` with `bypassed: true`. | Accidental god-mode that never expires. |
-| Hash-chained `audit.jsonl` (`prevHash` = SHA-256 of the previous canonical line), 64 MB rotation with `rotate_head`, `bun run purser -- audit verify`, optional `redactPaths`. | Tampering or truncation of the companion audit log. Same-user processes can still delete the files. |
+| `run_bash` disabled by default; opt-in per workspace in Setup → Shell. When enabled, commands pass through an allowlist classifier; unknown syntax is treated as mutating. Irreversible patterns (`rm -rf`, `git reset --hard`, `curl \| sh`, …) are refused unless **Allow destructive shell** is on. Mutating commands snapshot the git working tree when possible; **Undo last shell command** is session-scoped. Network commands (`curl`, `wget`, …) are flagged on their own card. Execution requires `ApprovedShellCommand` through the same tool gate as file writes. | Prompt-injected shell that bypasses file-edit staging or exfiltrates data. |
+| Hash-chained `audit.jsonl` (`prevHash` = SHA-256 of the previous canonical line), 64 MB rotation with `rotate_head`, `bun run purser -- audit verify`, optional `redactPaths`. Shell restore point ids are logged as `shell_restore_point`. | Tampering or truncation of the companion audit log. Same-user processes can still delete the files. |
 
 ## What is explicitly not defended
 
@@ -36,6 +37,14 @@ Disclosure: there is no published security mailbox yet. Until launch, report iss
 - Connecting to the runner via IPv6 loopback (`[::1]`) is rejected unless the user adds it to `allowedHosts`.
 - Production token injection: the compiled companion injects `window.__PURSER_BOOTSTRAP__` into HTML at request time. `/__purser/config` is 404 on the runner. Vite still mounts the JSON route in development only. See [docs/RELEASING.md](RELEASING.md).
 - Folder watch and host filesystem paths never go to a cloud API (README §4.2). That rule is not a local-attacker control.
+
+## Shell (`run_bash`)
+
+- **Default:** off. Enable per workspace in Setup → Shell.
+- **Classifier:** allowlist only (`ls`, `cat`, `git status`, `git diff` without `--output`, …). Chains split on `;`, `&&`, `||`, `|`, newline, and bare `&`. Anything not positively identified as read-only is mutating. Subshells, redirects, backticks, `$()`, and `eval` are unclassifiable → mutating.
+- **Refused outright** (unless destructive shell is enabled): `rm -rf` / `rm -r`, `git reset --hard`, `git clean -f`, `git checkout -- .`, `git push --force`, `dd`, `mkfs`, `truncate`, `shred`, `chmod -R`, `chown -R`, and piping a download into a shell.
+- **Undo:** before a mutating command, Purser records a git restore point when the workspace is a git repo and the tree is below a size cap. Undo is available for the current session only via Setup → **Undo last shell command**. Non-git folders show “No undo available” on the card.
+- **Network:** `curl`, `wget`, `nc`, `ssh`, and similar commands are flagged as contacting the network. An enabled shell can reach the network; Purser itself adds no egress, but the model-invoked shell does.
 
 ## Secrets posture
 

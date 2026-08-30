@@ -1,8 +1,12 @@
 import type { AgentEvent } from "@purser-sh/protocol";
 import type { RunInput } from "../types.ts";
 import { loadMcpTools } from "../mcp.ts";
-import { gateToolCall, gateReasonForModel, type GateResult } from "../tool-gate.ts";
+import { gateToolCall, gateReasonForModel, type GateResult, type RunBashArgs, type ToolName } from "../tool-gate.ts";
 import { normalizeProviderResponse } from "../tool-call-normalize.ts";
+import { purserHostedTools } from "../tool-catalog.ts";
+import { classifyShellCommand } from "../shell-classify.ts";
+import { ApprovedShellCommand } from "../shell-execute.ts";
+import { shellPermissionDetail, type ApprovableShellClassification } from "../shell-permission.ts";
 import { MAX_TURNS, runGatedTool, TOOL_DEFINITIONS, toolSummary, type ToolExecutionResult } from "./tools.ts";
 import { usageEventFromProvider } from "../usage.ts";
 
@@ -89,8 +93,11 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
   const baseUrl = input.config?.baseUrl ?? "http://127.0.0.1:11434/v1";
   const model = input.modelId ?? "llama3.2";
   const mcp = await loadMcpTools(input.workspaceRoot);
+  const hostedToolNames = new Set(
+    purserHostedTools(input.allowFiles, { runBashEnabled: input.shell?.enabled === true }),
+  );
   const tools = [
-    ...(input.allowFiles ? TOOL_DEFINITIONS : TOOL_DEFINITIONS.filter((tool) => tool.function.name === "web_search")),
+    ...TOOL_DEFINITIONS.filter((tool) => hostedToolNames.has(tool.function.name as never)),
     ...(mcp?.definitions ?? []),
   ];
   const registeredNames = new Set(tools.map((tool) => tool.function.name));
@@ -208,7 +215,57 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
         continue;
       }
       const summary = toolSummary(gated.name, gated.args);
-      if (
+      let approvedShell: ApprovedShellCommand | undefined;
+      if (gated.name === "run_bash") {
+        const command = (gated.args as RunBashArgs).command;
+        const classification = classifyShellCommand(command, {
+          allowDestructiveShell: input.shell?.allowDestructive === true,
+        });
+        if (classification.kind === "refused") {
+          yield { kind: "tool_call", toolId: call.id, name: call.function.name, input: gated.args, summary };
+          const output = `${classification.reason}\n\n${classification.enableHint}`;
+          yield { kind: "tool_result", toolId: call.id, ok: false, output, ms: 0 };
+          messages.push({ role: "tool", tool_call_id: call.id, content: output });
+          continue;
+        }
+        const approvable = classification as ApprovableShellClassification;
+        let restorePointId: string | undefined;
+        let undoNote: string | undefined;
+        let undoAvailable: boolean | undefined;
+        if (approvable.kind === "mutating" && input.shell?.prepareMutating !== undefined) {
+          restorePointId = `shell_${crypto.randomUUID()}`;
+          const prepared = await input.shell.prepareMutating({ command, restorePointId });
+          undoNote = prepared.undoNote;
+          undoAvailable = prepared.undoAvailable;
+        }
+        const detail = shellPermissionDetail({
+          command,
+          classification: approvable,
+          undoAvailable,
+          undoNote,
+          restorePointId,
+        });
+        const needsAsk =
+          input.permissionMode === "ask" &&
+          input.askPermission !== undefined &&
+          !isMcp;
+        if (needsAsk) {
+          const requestId = call.id;
+          yield { kind: "permission_request", requestId, action: gated.name, detail };
+          const allow = await input.askPermission!({ requestId, action: gated.name, detail });
+          if (!allow) {
+            messages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: "User denied this tool call.",
+            });
+            continue;
+          }
+          approvedShell = ApprovedShellCommand.fromApproval(command, approvable);
+        } else {
+          approvedShell = ApprovedShellCommand.fromImmediate(command, approvable);
+        }
+      } else if (
         input.permissionMode === "ask" &&
         input.askPermission &&
         gated.name !== "read_file" &&
@@ -238,9 +295,26 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
             Promise.resolve({ ok: false, output: "MCP is not loaded" }))),
           summary: call.function.name,
         };
+      } else if (gated.name === "run_bash") {
+        executed = await runGatedTool({
+          gate: gated as Extract<GateResult, { ok: true; name: "run_bash" }>,
+          cwd: input.cwd,
+          mutationPolicy: input.permissionMode === "ask" ? "stage-only" : "commit-immediate",
+          approvedShell: approvedShell!,
+          webSearch: async (query) => {
+            const key =
+              typeof input.config?.settings.perplexityApiKey === "string"
+                ? input.config.settings.perplexityApiKey
+                : (input.config?.apiKey ?? null);
+            if (key === null || key.length === 0) {
+              return "Perplexity is not configured. Set PERPLEXITY_API_KEY or a key in Settings.";
+            }
+            return webSearchPerplexity(key, query, input.signal);
+          },
+        });
       } else {
         executed = await runGatedTool({
-          gate: gated as Extract<GateResult, { ok: true }>,
+          gate: gated as Extract<GateResult, { ok: true; name: Exclude<ToolName, "run_bash"> }>,
           cwd: input.cwd,
           mutationPolicy: input.permissionMode === "ask" ? "stage-only" : "commit-immediate",
           webSearch: async (query) => {

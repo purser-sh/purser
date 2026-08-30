@@ -25,7 +25,14 @@ async function runTool(
   if (!gate.ok) {
     throw new Error(gate.reason);
   }
-  return runGatedTool({ gate, cwd, mutationPolicy });
+  if (gate.name === "run_bash") {
+    throw new Error("staging tests do not exercise run_bash");
+  }
+  return runGatedTool({
+    gate: gate as Extract<typeof gate, { name: Exclude<typeof gate.name, "run_bash"> }>,
+    cwd,
+    mutationPolicy,
+  });
 }
 
 describe("mutating tool staging", () => {

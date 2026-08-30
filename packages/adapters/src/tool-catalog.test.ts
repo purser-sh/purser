@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ADAPTER_TOOL_SURFACES, purserHostedTools } from "./tool-catalog.ts";
-import { TOOL_DEFINITIONS } from "./generic-llm/tools.ts";
+import { TOOL_DEFINITIONS, type ToolName } from "./generic-llm/tools.ts";
 
 describe("adapter tool catalog", () => {
   test("ollama registers read and write tools including apply_patch", () => {
@@ -24,8 +24,20 @@ describe("adapter tool catalog", () => {
     expect(surface.tools).toEqual(["web_search"]);
   });
 
-  test("hosted tool definitions match the catalog list", () => {
+  test("with run_bash disabled, the tool is not sent to the model at all", () => {
+    const disabled = purserHostedTools(true, { runBashEnabled: false });
+    expect(disabled).not.toContain("run_bash");
+    const sentToModel = TOOL_DEFINITIONS.filter((tool) =>
+      disabled.includes(tool.function.name as ToolName),
+    ).map((tool) => tool.function.name);
+    expect(sentToModel).not.toContain("run_bash");
+    expect(purserHostedTools(true, { runBashEnabled: true })).toContain("run_bash");
+  });
+
+  test("hosted tool definitions include run_bash when enabled", () => {
     const names = TOOL_DEFINITIONS.map((tool) => tool.function.name);
-    expect(names).toEqual(purserHostedTools(true));
+    expect(names).toContain("run_bash");
+    expect(purserHostedTools(true)).not.toContain("run_bash");
+    expect(purserHostedTools(true, { runBashEnabled: true })).toEqual(names as ToolName[]);
   });
 });

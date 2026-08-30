@@ -5,19 +5,25 @@ export type AdapterToolSurface =
   | { kind: "provider_native"; note: string };
 
 /** Purser-defined OpenAI-style tools sent to generic LLM adapters. */
-export function purserHostedTools(allowFiles: boolean): ToolName[] {
+export function purserHostedTools(
+  allowFiles: boolean,
+  options: { runBashEnabled?: boolean } = {},
+): ToolName[] {
   if (!allowFiles) {
     return ["web_search"];
   }
-  return [
+  const tools: ToolName[] = [
     "read_file",
     "write_file",
     "apply_patch",
     "list_dir",
     "ripgrep_search",
-    "run_bash",
     "web_search",
   ];
+  if (options.runBashEnabled === true) {
+    tools.splice(5, 0, "run_bash");
+  }
+  return tools;
 }
 
 /** Documented tool surface per adapter id (plus optional MCP tools at runtime). */

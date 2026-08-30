@@ -96,7 +96,11 @@ describe("what Purser promises", () => {
       return;
     }
 
-    const staged = await runGatedTool({ gate, cwd: root, mutationPolicy: "stage-only" });
+    const staged = await runGatedTool({
+      gate: gate as Extract<typeof gate, { name: "write_file" }>,
+      cwd: root,
+      mutationPolicy: "stage-only",
+    });
     expect(staged.ok).toBe(true);
     expect(readFileSync(target, "utf8")).toBe(before);
 
@@ -171,9 +175,12 @@ describe("what Purser promises", () => {
       permissionMode: "ask",
     });
 
-    const now = new Date(2026, 7, 28, 15, 30, 0);
-    const yesterday = new Date(2026, 7, 27, 22, 0, 0);
-    const earlierToday = new Date(2026, 7, 28, 9, 0, 0);
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(22, 0, 0, 0);
+    const earlierToday = new Date(now);
+    earlierToday.setHours(9, 0, 0, 0);
 
     const runEarlier = insertRun(db, session.id);
     const runCurrent = insertRun(db, session.id);
@@ -255,7 +262,11 @@ describe("what Purser promises", () => {
     if (!emptyContent.ok) {
       return;
     }
-    const staged = await runGatedTool({ gate: emptyContent, cwd: root, mutationPolicy: "stage-only" });
+    const staged = await runGatedTool({
+      gate: emptyContent as Extract<typeof emptyContent, { name: "write_file" }>,
+      cwd: root,
+      mutationPolicy: "stage-only",
+    });
     expect(staged.ok).toBe(true);
     expect(readFileSync(target, "utf8")).toBe(before);
   });

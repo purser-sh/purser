@@ -19,6 +19,8 @@ const workspace = {
   absPath: process.cwd(),
   gitRemote: null,
   createdAt: NOW,
+  runBashEnabled: false,
+  allowDestructiveShell: false,
 };
 
 const session = {

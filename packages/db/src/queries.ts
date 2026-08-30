@@ -43,13 +43,65 @@ import {
   workspaces,
 } from "./schema.sqlite.ts";
 
-function mapWorkspace(row: typeof workspaces.$inferSelect): Workspace {
+const FOLDER_WATCHES_KEY = "folder_watches";
+const WORKSPACE_SHELL_KEY = "workspace_shell";
+
+export type WorkspaceShellSettings = {
+  runBashEnabled: boolean;
+  allowDestructiveShell: boolean;
+};
+
+function loadWorkspaceShellMap(db: AppDatabase): Record<string, WorkspaceShellSettings> {
+  const row = db.select().from(settings).where(eq(settings.key, WORKSPACE_SHELL_KEY)).get();
+  if (row === undefined || row.value === null || typeof row.value !== "object" || Array.isArray(row.value)) {
+    return {};
+  }
+  const out: Record<string, WorkspaceShellSettings> = {};
+  for (const [workspaceId, raw] of Object.entries(row.value as Record<string, unknown>)) {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      continue;
+    }
+    const record = raw as Record<string, unknown>;
+    out[workspaceId] = {
+      runBashEnabled: record.runBashEnabled === true,
+      allowDestructiveShell: record.allowDestructiveShell === true,
+    };
+  }
+  return out;
+}
+
+export function getWorkspaceShellSettings(db: AppDatabase, workspaceId: string): WorkspaceShellSettings {
+  return loadWorkspaceShellMap(db)[workspaceId] ?? { runBashEnabled: false, allowDestructiveShell: false };
+}
+
+export function updateWorkspaceShellSettings(
+  db: AppDatabase,
+  workspaceId: string,
+  patch: Partial<WorkspaceShellSettings>,
+): WorkspaceShellSettings {
+  const map = loadWorkspaceShellMap(db);
+  const current = map[workspaceId] ?? { runBashEnabled: false, allowDestructiveShell: false };
+  const next = {
+    runBashEnabled: patch.runBashEnabled ?? current.runBashEnabled,
+    allowDestructiveShell: patch.allowDestructiveShell ?? current.allowDestructiveShell,
+  };
+  map[workspaceId] = next;
+  upsertSetting(db, WORKSPACE_SHELL_KEY, map);
+  return next;
+}
+
+function mapWorkspace(
+  row: typeof workspaces.$inferSelect,
+  shell: WorkspaceShellSettings = { runBashEnabled: false, allowDestructiveShell: false },
+): Workspace {
   return {
     id: row.id,
     name: row.name,
     absPath: row.absPath,
     gitRemote: row.gitRemote,
     createdAt: toIso(row.createdAt),
+    runBashEnabled: shell.runBashEnabled,
+    allowDestructiveShell: shell.allowDestructiveShell,
   };
 }
 
@@ -208,8 +260,14 @@ export async function seedDefaults(db: AppDatabase): Promise<void> {
 }
 
 export function loadState(db: AppDatabase): StatePayload {
+  const shellByWorkspace = loadWorkspaceShellMap(db);
   return {
-    workspaces: db.select().from(workspaces).orderBy(asc(workspaces.createdAt)).all().map(mapWorkspace),
+    workspaces: db
+      .select()
+      .from(workspaces)
+      .orderBy(asc(workspaces.createdAt))
+      .all()
+      .map((row) => mapWorkspace(row, shellByWorkspace[row.id])),
     sessions: db.select().from(sessions).orderBy(asc(sessions.createdAt)).all().map(mapSession),
     events: db.select().from(events).orderBy(asc(events.createdAt), asc(events.seq)).all().map(mapEvent),
     runs: db.select().from(runs).orderBy(asc(runs.startedAt)).all().map(mapRun),
@@ -220,7 +278,7 @@ export function loadState(db: AppDatabase): StatePayload {
       .from(settings)
       .all()
       .map(mapSetting)
-      .filter((setting) => setting.key !== FOLDER_WATCHES_KEY),
+      .filter((setting) => setting.key !== FOLDER_WATCHES_KEY && setting.key !== WORKSPACE_SHELL_KEY),
     folderWatches: listFolderWatches(db),
     budgets: listBudgets(db),
     spendSummary: loadSpendSummary(db),
@@ -241,7 +299,7 @@ export function insertWorkspace(
     createdAt: now,
   };
   db.insert(workspaces).values(row).run();
-  return mapWorkspace(row);
+  return mapWorkspace(row, { runBashEnabled: false, allowDestructiveShell: false });
 }
 
 export function deleteWorkspace(db: AppDatabase, workspaceId: string): boolean {
@@ -540,8 +598,6 @@ export function upsertSetting(db: AppDatabase, key: string, value: unknown): Set
   }
   return { key, value };
 }
-
-const FOLDER_WATCHES_KEY = "folder_watches";
 
 export function listFolderWatches(db: AppDatabase): FolderWatch[] {
   const row = db.select().from(settings).where(eq(settings.key, FOLDER_WATCHES_KEY)).get();

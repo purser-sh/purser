@@ -236,7 +236,7 @@ describe("generic LLM tool loop", () => {
         signal: AbortSignal.timeout(5000),
         config: { baseUrl: "http://127.0.0.1:11434/v1", apiKey: null, settings: {} },
       });
-      expect(events.some((event) => event.kind === "text")).toBe(false);
+      expect(events.some((event) => event.kind === "text" && event.text === content)).toBe(false);
       expect(events.some((event) => event.kind === "tool_call" && event.name === "apply_patch")).toBe(true);
       expect(events.some((event) => event.kind === "tool_result" && event.ok === false)).toBe(true);
     } finally {

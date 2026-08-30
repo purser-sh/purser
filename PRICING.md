@@ -1,5 +1,7 @@
 # Pricing (not chosen)
 
+Licensed under **Apache-2.0** (see [LICENSE](LICENSE)).
+
 This is **not** a price list. A human must decide whether Purser is free
 open-source, a paid companion, a seat, usage-billed, or something else.
 
@@ -13,7 +15,6 @@ open-source, a paid companion, a seat, usage-billed, or something else.
 
 Fill this section when you choose:
 
-- License (see `LICENSE`)
 - Companion: free / paid / donation
 - Hosted cell: seat / usage / both
 - Whether Homebrew and GitHub Releases are free downloads

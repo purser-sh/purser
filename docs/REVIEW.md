@@ -1,6 +1,6 @@
 # Purser — product and architecture (review)
 
-This is the internal review surface. The public homepage is [README.md](../README.md). Read this, then spot-check the packages listed at the end.
+This is the internal review surface. The public homepage is [README.md](../README.md). For a concise architecture overview (diagrams, safety model, deploy modes), see [ARCHITECTURE.md](ARCHITECTURE.md). Read this doc for protocol frames and spot-check lists.
 
 Purser is a **voice-first coding operations platform**. You talk to it, type to it, or drop files into a watched folder on your laptop. It runs **your** coding agents (Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity, plus a fake Echo adapter) against a real project on disk. GitHub **and** GitLab are remotes. VS Code and Cursor are optional thin clients — they are not the product.
 

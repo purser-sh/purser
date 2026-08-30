@@ -5,10 +5,11 @@ import { dirname, join } from "node:path";
 import { which } from "../cli/which.ts";
 import { formatMissingPath, resolveRequestedPath } from "../path-suggest.ts";
 import { listWorkspaceDir, readWorkspaceFile, SandboxError } from "../sandbox.ts";
-import type { GateResult } from "../tool-gate.ts";
-import type { ApplyPatchArgs, ListDirArgs, ReadFileArgs, RipgrepSearchArgs, RunBashArgs, WebSearchArgs, WriteFileArgs } from "../tool-gate.ts";
+import type { GateResult, ToolName } from "../tool-gate.ts";
+import type { ApplyPatchArgs, ListDirArgs, ReadFileArgs, RipgrepSearchArgs, WebSearchArgs, WriteFileArgs } from "../tool-gate.ts";
 import { buildUnifiedDiff, pathsFromPatch } from "../unified-diff.ts";
 import { ApprovedChange, commitToWorkspace, commitToWorkspaceAcknowledged, StagedChange, type SizeDeltaWarning } from "../workspace-write.ts";
+import { ApprovedShellCommand, executeApprovedShell } from "../shell-execute.ts";
 
 export const MAX_TOOL_OUTPUT = 32_000;
 export const MAX_FILE_BYTES = 256_000;
@@ -132,14 +133,7 @@ function commitStaged(staged: StagedChange, cwd: string, summaryVerb: string): T
   };
 }
 
-export type ToolName =
-  | "read_file"
-  | "write_file"
-  | "apply_patch"
-  | "list_dir"
-  | "ripgrep_search"
-  | "run_bash"
-  | "web_search";
+export type { ToolName };
 
 export const TOOL_DEFINITIONS = [
   {
@@ -336,16 +330,32 @@ function ripgrepSearch(
 }
 
 /** Sole executor entry for hosted tools — requires a gate pass; never accepts unvalidated args. */
-export async function runGatedTool(input: {
-  gate: Extract<GateResult, { ok: true }>;
+type GatedPass = Extract<GateResult, { ok: true }>;
+type NonShellGatedPass = Extract<GatedPass, { name: Exclude<ToolName, "run_bash"> }>;
+type ShellGatedPass = Extract<GatedPass, { name: "run_bash" }>;
+
+type RunGatedToolBase = {
   cwd: string;
   mutationPolicy: MutationPolicy;
   webSearch?: (query: string) => Promise<string>;
-}): Promise<ToolExecutionResult> {
+};
+
+export type RunGatedToolInput =
+  | (RunGatedToolBase & { gate: ShellGatedPass; approvedShell: ApprovedShellCommand })
+  | (RunGatedToolBase & { gate: NonShellGatedPass });
+
+export async function runGatedTool(
+  input: RunGatedToolBase & { gate: ShellGatedPass; approvedShell: ApprovedShellCommand },
+): Promise<ToolExecutionResult>;
+export async function runGatedTool(
+  input: RunGatedToolBase & { gate: NonShellGatedPass },
+): Promise<ToolExecutionResult>;
+export async function runGatedTool(input: RunGatedToolInput): Promise<ToolExecutionResult> {
+  const gate: GatedPass = input.gate;
   try {
-    switch (input.gate.name) {
+    switch (gate.name) {
       case "read_file": {
-        const args = input.gate.args as ReadFileArgs;
+        const args = gate.args as ReadFileArgs;
         const resolved = resolveRequestedPath(input.cwd, args.path);
         if (resolved.kind === "missing") {
           const message = formatMissingPath(args.path, resolved.suggestions);
@@ -357,7 +367,7 @@ export async function runGatedTool(input: {
         return { ok: true, output, summary };
       }
       case "write_file": {
-        const args = input.gate.args as WriteFileArgs;
+        const args = gate.args as WriteFileArgs;
         const oldContent = readExistingFile(input.cwd, args.path);
         const diff = buildUnifiedDiff(args.path, oldContent, args.content);
         const staged = StagedChange.create({
@@ -377,7 +387,7 @@ export async function runGatedTool(input: {
         return commitStaged(staged, input.cwd, "wrote");
       }
       case "apply_patch": {
-        const args = input.gate.args as ApplyPatchArgs;
+        const args = gate.args as ApplyPatchArgs;
         const built = buildStagedFromPatch(input.cwd, args.patch);
         if (!("staged" in built)) {
           return built;
@@ -393,7 +403,7 @@ export async function runGatedTool(input: {
         return commitStaged(built.staged, input.cwd, "applied patch for");
       }
       case "list_dir": {
-        const args = input.gate.args as ListDirArgs;
+        const args = gate.args as ListDirArgs;
         const asked = args.path.length > 0 ? args.path : ".";
         try {
           const output = listWorkspaceDir(input.cwd, asked);
@@ -414,23 +424,17 @@ export async function runGatedTool(input: {
         }
       }
       case "ripgrep_search": {
-        const args = input.gate.args as RipgrepSearchArgs;
+        const args = gate.args as RipgrepSearchArgs;
         return ripgrepSearch(input.cwd, args.query, args.glob ?? "");
       }
       case "run_bash": {
-        const args = input.gate.args as RunBashArgs;
-        const bash = which("bash") ?? "bash";
-        const result = spawnSync(bash, ["-lc", args.command], {
-          cwd: input.cwd,
-          encoding: "utf8",
-          timeout: 30_000,
-          env: process.env,
-        });
-        const output = cap(`${result.stdout ?? ""}${result.stderr ?? ""}`);
-        return { ok: result.status === 0, output, summary: `ran ${args.command.slice(0, 80)}` };
+        return executeApprovedShell(
+          (input as RunGatedToolBase & { gate: ShellGatedPass; approvedShell: ApprovedShellCommand }).approvedShell,
+          input.cwd,
+        );
       }
       case "web_search": {
-        const args = input.gate.args as WebSearchArgs;
+        const args = gate.args as WebSearchArgs;
         const output = input.webSearch ? await input.webSearch(args.query) : "web_search is not configured";
         return { ok: true, output, summary: `searched the web for ${args.query}` };
       }

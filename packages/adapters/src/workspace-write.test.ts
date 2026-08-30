@@ -61,7 +61,11 @@ describe("ApprovedChange and commitToWorkspace", () => {
     if (!gate.ok) {
       return;
     }
-    await runGatedTool({ gate, cwd: root, mutationPolicy: "stage-only" });
+    await runGatedTool({
+      gate: gate as Extract<typeof gate, { name: "write_file" }>,
+      cwd: root,
+      mutationPolicy: "stage-only",
+    });
     expect(readFileSync(join(root, "README.md"), "utf8")).toBe("before\n");
   });
 });

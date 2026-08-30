@@ -407,6 +407,53 @@ export function RightPanel(props: { onOpenWorkspace: () => void }) {
               </Button>
             </section>
             <section>
+              <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">Shell (run_bash)</h3>
+              <p className="mb-2 text-[length:var(--text-2xs)] text-muted-foreground">
+                Off by default. When enabled, commands are classified by allowlist; unknown commands are treated as mutating.
+              </p>
+              <label className="flex items-center gap-2 text-[length:var(--text-xs)]">
+                <input
+                  checked={workspace?.runBashEnabled === true}
+                  disabled={workspace === undefined}
+                  onChange={(event) => {
+                    if (workspace === undefined) return;
+                    void client.request("update_workspace_shell", {
+                      workspaceId: workspace.id,
+                      runBashEnabled: event.target.checked,
+                    });
+                  }}
+                  type="checkbox"
+                />
+                Enable run_bash for this workspace
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-[length:var(--text-xs)]">
+                <input
+                  checked={workspace?.allowDestructiveShell === true}
+                  disabled={workspace === undefined || workspace.runBashEnabled !== true}
+                  onChange={(event) => {
+                    if (workspace === undefined) return;
+                    void client.request("update_workspace_shell", {
+                      workspaceId: workspace.id,
+                      allowDestructiveShell: event.target.checked,
+                    });
+                  }}
+                  type="checkbox"
+                />
+                Allow destructive shell (rm -rf, git reset --hard, curl | sh, …)
+              </label>
+              {session !== undefined ? (
+                <Button
+                  className="mt-2 w-full"
+                  onClick={() => void client.request("undo_shell", { sessionId: session.id })}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Undo last shell command
+                </Button>
+              ) : null}
+            </section>
+            <section>
               <h3 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">Workspace</h3>
               {workspace ? <PathDisclosure path={workspace.absPath} /> : null}
               {session.worktreePath ? (

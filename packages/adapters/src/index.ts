@@ -58,9 +58,28 @@ export {
   type SizeDeltaWarning,
 } from "./workspace-write.ts";
 export {
+  classifyShellCommand,
+  shellCardSeverity,
+  SHELL_READ_ONLY_ALLOWLIST,
+  type ShellCardSeverity,
+  type ShellClassification,
+} from "./shell-classify.ts";
+export {
+  ApprovedShellCommand,
+  executeApprovedShell,
+} from "./shell-execute.ts";
+export {
+  isShellPermissionDetail,
+  shellCardTitle,
+  shellPermissionDetail,
+  type ApprovableShellClassification,
+  type ShellPermissionDetail,
+} from "./shell-permission.ts";
+export {
   runGatedTool,
   TOOL_DEFINITIONS,
   toolSummary,
+  type RunGatedToolInput,
   type ToolExecutionResult,
   type MutationPolicy,
 } from "./generic-llm/tools.ts";

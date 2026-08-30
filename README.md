@@ -151,7 +151,8 @@ Also shipped: workspaces, sessions (title from first prompt), diffs, permission 
 
 | Doc | What |
 | --- | --- |
-| [docs/REVIEW.md](docs/REVIEW.md) | Architecture, protocol, repo map |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | What Purser is, system diagram, safety model |
+| [docs/REVIEW.md](docs/REVIEW.md) | Protocol, repo map, review checklist |
 | [docs/SECURITY.md](docs/SECURITY.md) | Companion threat model |
 | [docs/METERING.md](docs/METERING.md) | What we can observe and price |
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | Honest matrix |

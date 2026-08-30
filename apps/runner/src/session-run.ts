@@ -8,6 +8,7 @@ import {
   insertEvent,
   insertRun,
   updateSession,
+  getWorkspaceShellSettings,
   LedgerIntegrityError,
   type AppDatabase,
 } from "@purser-sh/db";
@@ -19,6 +20,7 @@ import { buildExtraPrompt } from "./skills.ts";
 import { appendAudit } from "./audit.ts";
 import { purserDir } from "./config.ts";
 import { writeStaged } from "./staging.ts";
+import { createShellRestorePoint } from "./shell-snapshot.ts";
 import { finalizeRunLedger, recordUsageEvent } from "./meter.ts";
 import {
   buildSpendUpdate,
@@ -102,6 +104,7 @@ export async function executeRun(input: {
   }
 
   const cwd = session.worktreePath ?? workspace.absPath;
+  const shellSettings = getWorkspaceShellSettings(input.db, workspace.id);
   const provider = getProviderConfig(input.db, session.providerId);
   const apiKey = getSecret(session.providerId);
   const extra = [buildExtraPrompt(workspace.absPath), provider?.settings.personaPrompt]
@@ -144,6 +147,22 @@ export async function executeRun(input: {
           action: request.action,
           detail: request.detail,
         }),
+      shell: {
+        enabled: shellSettings.runBashEnabled,
+        allowDestructive: shellSettings.allowDestructiveShell,
+        prepareMutating: async ({ restorePointId }) => {
+          const snapshot = createShellRestorePoint(input.sessionId, cwd, restorePointId);
+          appendAudit(purserDir(), {
+            ts: new Date().toISOString(),
+            type: "shell_restore_point",
+            sessionId: input.sessionId,
+            runId: input.runId,
+            workspaceId: workspace.id,
+            detail: snapshot.restorePointId,
+          });
+          return { undoAvailable: snapshot.undoAvailable, undoNote: snapshot.undoNote };
+        },
+      },
     })) {
       appendRunLog(input.runId, event);
       if (SPEND_EVIDENCE.has(event.kind)) {

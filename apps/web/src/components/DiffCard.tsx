@@ -84,6 +84,16 @@ export function PermissionDecisionCard(props: {
   onDeny: () => void;
   cardRef?: (node: HTMLDivElement | null) => void;
 }) {
+  if (isShellDetail(props.detail)) {
+    return (
+      <ShellDecisionCard
+        cardRef={props.cardRef}
+        detail={props.detail}
+        onAllow={props.onAllow}
+        onDeny={props.onDeny}
+      />
+    );
+  }
   const body =
     typeof props.detail === "string"
       ? props.detail
@@ -100,6 +110,72 @@ export function PermissionDecisionCard(props: {
         title={`Allow ${props.action}?`}
       >
         <pre className="overflow-x-auto font-mono whitespace-pre-wrap">{body}</pre>
+      </DecisionCard>
+    </div>
+  );
+}
+
+type ShellDetail = {
+  kind: "shell";
+  command: string;
+  severity: "read_only" | "mutating" | "network";
+  effect: string;
+  undoAvailable?: boolean;
+  undoNote?: string;
+};
+
+function isShellDetail(detail: unknown): detail is ShellDetail {
+  return (
+    detail !== null &&
+    typeof detail === "object" &&
+    !Array.isArray(detail) &&
+    (detail as { kind?: unknown }).kind === "shell"
+  );
+}
+
+function shellTitle(detail: ShellDetail): string {
+  if (detail.severity === "read_only") {
+    return "Allow run_bash?";
+  }
+  if (detail.severity === "network") {
+    return "run_bash will contact the network";
+  }
+  return "run_bash will modify your workspace";
+}
+
+function shellSeverity(detail: ShellDetail): "info" | "warn" | "block" {
+  if (detail.severity === "read_only") {
+    return "info";
+  }
+  if (detail.severity === "network") {
+    return "warn";
+  }
+  return "block";
+}
+
+export function ShellDecisionCard(props: {
+  detail: ShellDetail;
+  onAllow: () => void;
+  onDeny: () => void;
+  cardRef?: (node: HTMLDivElement | null) => void;
+}) {
+  return (
+    <div ref={props.cardRef}>
+      <DecisionCard
+        actions={[
+          { label: "Deny", onClick: props.onDeny, variant: "outline" },
+          { label: "Allow", onClick: props.onAllow, variant: props.detail.severity === "read_only" ? "pass" : "destructive" },
+        ]}
+        severity={shellSeverity(props.detail)}
+        title={shellTitle(props.detail)}
+      >
+        <div className="space-y-2">
+          <pre className="overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-2 p-2 font-mono whitespace-pre-wrap">
+            {props.detail.command}
+          </pre>
+          <p>{props.detail.effect}</p>
+          {props.detail.undoNote ? <p className="text-muted-foreground">{props.detail.undoNote}</p> : null}
+        </div>
       </DecisionCard>
     </div>
   );

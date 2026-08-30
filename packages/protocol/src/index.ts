@@ -168,6 +168,8 @@ export {
   WatchFolderPayloadSchema,
   UnwatchFolderPayloadSchema,
   LinkRepositoryPayloadSchema,
+  UpdateWorkspaceShellPayloadSchema,
+  UndoShellPayloadSchema,
   type HelloPayload,
   type GetStatePayload,
   type CreateWorkspacePayload,
@@ -201,6 +203,8 @@ export {
   type WatchFolderPayload,
   type UnwatchFolderPayload,
   type LinkRepositoryPayload,
+  type UpdateWorkspaceShellPayload,
+  type UndoShellPayload,
 } from "./client-payloads.ts";
 
 export {

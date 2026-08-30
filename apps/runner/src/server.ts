@@ -16,6 +16,7 @@ import {
   seedDefaults,
   updateSession,
   updateWorkspace,
+  updateWorkspaceShellSettings,
   upsertProviderConfig,
   upsertVoiceProfile,
   upsertBudget,
@@ -49,6 +50,7 @@ import { formatListenError } from "./listen-error.ts";
 import { executeRun, prepareRun } from "./session-run.ts";
 import { createSessionWorktree, applyApprovedPath, keepPath, removeSessionWorktree, revertPath, worktreeSessionNotice } from "./worktree.ts";
 import { applyStaged, discardStaged, hasStaged } from "./staging.ts";
+import { readShellRestorePoint, undoShellRestorePoint } from "./shell-snapshot.ts";
 import { getSecret, setSecret, takeApiKeyFromSettings } from "./secrets.ts";
 import { connectRelay, type RelayHandle } from "./relay.ts";
 import { VoiceSession, toBase64Pcm } from "./voice-session.ts";
@@ -1003,6 +1005,51 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         workspaceId: workspace.id,
         detail: parsed.forge,
       });
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "update_workspace_shell": {
+      const workspace = getWorkspace(ctx.db, message.payload.workspaceId);
+      if (workspace === undefined) {
+        throw new HandlerError("not_found", "workspace not found");
+      }
+      updateWorkspaceShellSettings(ctx.db, workspace.id, {
+        runBashEnabled: message.payload.runBashEnabled,
+        allowDestructiveShell: message.payload.allowDestructiveShell,
+      });
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "update_workspace_shell",
+        workspaceId: workspace.id,
+        detail: JSON.stringify({
+          runBashEnabled: message.payload.runBashEnabled,
+          allowDestructiveShell: message.payload.allowDestructiveShell,
+        }),
+      });
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "undo_shell": {
+      const session = getSession(ctx.db, message.payload.sessionId);
+      if (session === undefined) {
+        throw new HandlerError("not_found", "session not found");
+      }
+      const point = readShellRestorePoint(session.id);
+      if (point === null) {
+        throw new HandlerError("bad_request", "No shell restore point for this session.");
+      }
+      const result = undoShellRestorePoint(session.id);
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "shell_undo",
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        detail: result.detail,
+        outcome: result.ok ? "ok" : "error",
+      });
+      if (!result.ok) {
+        throw new HandlerError("git", result.detail);
+      }
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
       return;
     }

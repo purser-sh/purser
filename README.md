@@ -2,7 +2,27 @@
 
 **The purser for your coding agents** — one console that meters every run, records every change, and keeps an audit you can verify. Agents run on your machine; Purser's job is spend you can trust.
 
-<!-- TODO: demo GIF — I am recording it separately. -->
+**Free and open source · Apache-2.0 · Runs entirely on your machine**
+
+## The problem
+
+You run more than one coding agent now. Claude Code for one thing,
+Cursor for another, a local model for the cheap work.
+
+**How much did they cost this week?**
+Claude shows you Claude. Cursor shows you Cursor. Nobody shows the total.
+
+**Which agent wrote this file, and did anyone check it?**
+The commit says your name. The prompt, the model and the review are gone.
+
+**What stops a runaway agent at 2am?**
+Nothing. You find out when the bill arrives.
+
+Purser sits in front of the agents you already run and answers those
+three questions. It does not replace your agents, does not resell
+tokens, and never holds your provider logins — you keep those.
+
+*For anyone running more than one coding agent.*
 
 ## Quickstart
 
@@ -33,6 +53,8 @@ Requires [Bun](https://bun.sh) ≥ **1.3.14**.
 | Optional relay | `ws://127.0.0.1:7430` |
 
 First start writes `~/.purser/config.json` (mode `0600`). The token is **never printed**. API keys go in Settings → `~/.purser/secrets.json`, never SQLite.
+
+## Development
 
 ```bash
 bun test
@@ -91,13 +113,7 @@ Purser warns at session creation when your open folder has uncommitted changes. 
 
 ## Packaged install (not ready yet)
 
-`install.sh` in this repo **requires a public GitHub Release** and `PURSER_REPO=owner/name`. There is no tagged public release yet, so:
-
-```bash
-curl -fsSL purser.sh/install | sh   # does not work yet — do not use
-```
-
-Use the Quickstart above until **v0.1.0**. Details for maintainers: [docs/RELEASING.md](docs/RELEASING.md).
+A one-line installer ships with v0.1.0. Until then, use the Quickstart above. Maintainer details: [docs/RELEASING.md](docs/RELEASING.md).
 
 `bun run compile` builds the web UI (Vite), embeds it in the runner, and compiles a standalone binary — **no separate manual UI build**. Output lands in `dist/bin/` (e.g. `dist/bin/purser-linux-x64` on Linux, plus a `dist/bin/purser` symlink):
 
@@ -105,6 +121,9 @@ Use the Quickstart above until **v0.1.0**. Details for maintainers: [docs/RELEAS
 bun run compile
 ./dist/bin/purser audit verify
 ```
+
+<details>
+<summary>Development history — what landed in each phase</summary>
 
 ## Done (Phases 0–7)
 
@@ -135,17 +154,15 @@ Spend is the product surface; the accent colour marks **one primary action per s
 
 Also shipped: workspaces, sessions (title from first prompt), diffs, permission modes (`ask` / `auto_edit` / `bypass` with TTL), adapters (Echo, Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity), session git worktrees at HEAD, `read_file` / `list_dir` near-match hints, runner PATH augmentation for `ripgrep_search`, drop-folder → `.inbox/`, voice + `/phone`.
 
+</details>
+
 ## Not shipped
 
-- VS Code / Cursor marketplace extensions (protocol notes only)
+- No tagged public release or packaged installer yet (use the Quickstart)
 - Live Postgres / hosted cells (schema and types only; postgres URL throws)
+- VS Code / Cursor marketplace extensions (protocol notes only)
 - A Google / Gemini local tokenizer (coach counts for `gemini_cli` stay approximate in-browser)
-- A tagged public release, Homebrew tap with real sha256, or signing secrets
 - Purser's own price (see [PRICING.md](PRICING.md))
-- Web console bundle code-splitting (current production build is ~3.6 MB / ~1.6 MB gzipped — tolerable locally, worth trimming before v1)
-- Commit provenance trailers / `purser provenance` (Phase C)
-- Discriminated `Spend` union without `usdMicros` on subscription runs (Phase B2)
-- Security decision cards (`sec.*` rules) and full DecisionCard keyboard focus ring audit
 
 ## Docs
 

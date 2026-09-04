@@ -1,5 +1,10 @@
 import type { BudgetStatus, CostModel, SpendSummary, SpendUpdatePayload } from "@purser-sh/protocol";
-import { ledgerCostLabel, ledgerTokenLabel } from "@purser-sh/protocol";
+import {
+  formatMixedSpendLine,
+  ledgerCostLabel,
+  ledgerTokenLabel,
+  subscriptionCostExplanation,
+} from "@purser-sh/protocol";
 import { Sparkles } from "lucide-react";
 import { TokenCountLabel } from "@/components/TokenCountLabel";
 import { Button } from "@/components/ui/button";
@@ -24,11 +29,14 @@ function budgetBarClass(pct: number): string {
   return "bg-pass";
 }
 
-function meterTooltip(spend: SpendUpdatePayload | undefined): string {
+function meterTooltip(spend: SpendUpdatePayload | undefined, costModel: CostModel): string {
   if (spend === undefined) {
     return "Send a run to see live token counts.";
   }
   const src = spend.source === "estimated" ? "approximate (estimated)" : "from provider usage";
+  if (costModel === "subscription" || costModel === "local") {
+    return `${spend.tokens.input + spend.tokens.output} tokens (${src}). ${subscriptionCostExplanation()}`;
+  }
   return `${spend.tokens.input + spend.tokens.output} tokens (${src}). Cost only shows up for providers we can price.`;
 }
 
@@ -45,7 +53,8 @@ type FullProps = {
   spend?: SpendUpdatePayload;
   spendSummary: SpendSummary;
   costModel: CostModel;
-  providerRows: { key: string; tokens: number; costUsdMicros: number | null }[];
+  costModelByProvider?: Record<string, CostModel>;
+  providerRows: { key: string; providerId?: string; tokens: number; costUsdMicros: number | null }[];
   sessionRows: { key: string; tokens: number; costUsdMicros: number | null; isOthers?: boolean }[];
   estimate?: PromptEstimate | null;
   onUseShorter?: () => void;
@@ -65,6 +74,7 @@ function RunMeterCompact(props: CompactProps) {
   const tightest = tightestBudget(props.spend?.budgets);
   const pct = tightest !== undefined ? Math.min(100, Math.trunc(tightest.pct)) : 0;
   const idle = !props.running && props.spend === undefined;
+  const tokensOnly = props.costModel === "subscription" || props.costModel === "local";
 
   const inner = (
     <>
@@ -78,7 +88,10 @@ function RunMeterCompact(props: CompactProps) {
       <span className="tabular-nums text-[length:var(--text-xs)] text-foreground">
         {props.spend !== undefined ? `${formatTokenCompact(tokens, source)} tok` : "not yet"}
       </span>
-      <span className="tabular-nums text-[length:var(--text-xs)] text-muted-foreground">
+      <span
+        className="truncate tabular-nums text-[length:var(--text-2xs)] text-muted-foreground"
+        title={tokensOnly ? subscriptionCostExplanation() : undefined}
+      >
         {formatCostCompact(cost, props.costModel)}
       </span>
       {tightest !== undefined ? (
@@ -97,14 +110,19 @@ function RunMeterCompact(props: CompactProps) {
 
   if (props.onClick) {
     return (
-      <button className={cn(className, "hover:bg-surface-2")} onClick={props.onClick} title={meterTooltip(props.spend)} type="button">
+      <button
+        className={cn(className, "hover:bg-surface-2")}
+        onClick={props.onClick}
+        title={meterTooltip(props.spend, props.costModel)}
+        type="button"
+      >
         {inner}
       </button>
     );
   }
 
   return (
-    <div className={className} title={meterTooltip(props.spend)}>
+    <div className={className} title={meterTooltip(props.spend, props.costModel)}>
       {inner}
     </div>
   );
@@ -113,28 +131,49 @@ function RunMeterCompact(props: CompactProps) {
 function RunMeterFull(props: FullProps) {
   const runTokens = props.spend ? props.spend.tokens.input + props.spend.tokens.output : 0;
   const runSource = props.spend?.source ?? "provider_usage";
-  const metered = props.costModel === "metered";
   const runCost = props.spend?.costUsdMicros ?? null;
   const tightest = tightestBudget(props.spend?.budgets);
+  const runTokensOnly = props.costModel === "subscription" || props.costModel === "local";
+
+  const models = Object.values(props.costModelByProvider ?? {});
+  const hasSubscriptionOrLocal = models.some((model) => model === "subscription" || model === "local");
+  const hasMetered = models.some((model) => model === "metered") || props.spendSummary.today.costUsdMicros !== null;
 
   const rows = [
     {
       label: "This run",
-      tokens: runTokens,
-      tokenSource: runSource as "estimated" | "provider_usage",
-      cost: runCost,
+      line: runTokensOnly
+        ? `${ledgerTokenLabel(runTokens, runSource)} tok · ${ledgerCostLabel(null, props.costModel)}`
+        : `${ledgerTokenLabel(runTokens, runSource)} tok · ${ledgerCostLabel(runCost, props.costModel)}`,
+      title: runTokensOnly ? subscriptionCostExplanation() : undefined,
     },
     {
       label: "Today",
-      tokens: props.spendSummary.today.tokens,
-      tokenSource: "provider_usage" as const,
-      cost: metered ? props.spendSummary.today.costUsdMicros : null,
+      line: formatMixedSpendLine({
+        tokens: props.spendSummary.today.tokens,
+        tokenSource: "provider_usage",
+        meteredCostUsdMicros: props.spendSummary.today.costUsdMicros,
+        hasSubscriptionOrLocal: hasSubscriptionOrLocal || (hasMetered && props.spendSummary.unpricedModels.length > 0),
+      }),
+      title:
+        props.spendSummary.today.costUsdMicros !== null &&
+        (hasSubscriptionOrLocal || props.spendSummary.unpricedModels.length > 0)
+          ? "Dollar subtotal is metered providers only. Subscription and local plans contribute tokens, not currency."
+          : undefined,
     },
     {
       label: "This month",
-      tokens: props.spendSummary.month.tokens,
-      tokenSource: "provider_usage" as const,
-      cost: metered ? props.spendSummary.month.costUsdMicros : null,
+      line: formatMixedSpendLine({
+        tokens: props.spendSummary.month.tokens,
+        tokenSource: "provider_usage",
+        meteredCostUsdMicros: props.spendSummary.month.costUsdMicros,
+        hasSubscriptionOrLocal: hasSubscriptionOrLocal || (hasMetered && props.spendSummary.unpricedModels.length > 0),
+      }),
+      title:
+        props.spendSummary.month.costUsdMicros !== null &&
+        (hasSubscriptionOrLocal || props.spendSummary.unpricedModels.length > 0)
+          ? "Dollar subtotal is metered providers only. Subscription and local plans contribute tokens, not currency."
+          : undefined,
     },
   ];
 
@@ -142,10 +181,10 @@ function RunMeterFull(props: FullProps) {
     <div className="space-y-4">
       <div className="space-y-2">
         {rows.map((row) => (
-          <div className="flex items-center justify-between gap-3 text-[length:var(--text-sm)]" key={row.label}>
-            <span className="text-muted-foreground">{row.label}</span>
-            <span className="tabular-nums text-foreground">
-              {ledgerTokenLabel(row.tokens, row.tokenSource)} tok, {ledgerCostLabel(row.cost, props.costModel)}
+          <div className="flex items-start justify-between gap-3 text-[length:var(--text-sm)]" key={row.label}>
+            <span className="shrink-0 text-muted-foreground">{row.label}</span>
+            <span className="text-right tabular-nums text-foreground" title={row.title}>
+              {row.line}
             </span>
           </div>
         ))}
@@ -163,14 +202,25 @@ function RunMeterFull(props: FullProps) {
         <section>
           <h4 className="mb-2 text-[length:var(--text-2xs)] label-caps text-muted-foreground">By provider</h4>
           <div className="space-y-1">
-            {props.providerRows.map((row) => (
-              <div className="flex justify-between gap-2 tabular-nums text-[length:var(--text-xs)]" key={row.key}>
-                <span className="truncate text-text-2">{row.key}</span>
-                <span className="shrink-0 text-foreground">
-                  {ledgerTokenLabel(row.tokens, "provider_usage")} tok, {ledgerCostLabel(row.costUsdMicros, props.costModel)}
-                </span>
-              </div>
-            ))}
+            {props.providerRows.map((row) => {
+              const model =
+                row.providerId !== undefined
+                  ? (props.costModelByProvider?.[row.providerId] ?? "local")
+                  : row.costUsdMicros !== null
+                    ? "metered"
+                    : "subscription";
+              return (
+                <div className="flex justify-between gap-2 tabular-nums text-[length:var(--text-xs)]" key={row.key}>
+                  <span className="truncate text-text-2">{row.key}</span>
+                  <span
+                    className="shrink-0 text-right text-foreground"
+                    title={model === "subscription" || model === "local" ? subscriptionCostExplanation() : undefined}
+                  >
+                    {ledgerTokenLabel(row.tokens, "provider_usage")} tok · {ledgerCostLabel(row.costUsdMicros, model)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -184,8 +234,13 @@ function RunMeterFull(props: FullProps) {
                 <span className={cn("truncate text-text-2", row.isOthers ? "italic text-muted-foreground" : "")}>
                   {row.key}
                 </span>
-                <span className="shrink-0 text-foreground">
-                  {ledgerTokenLabel(row.tokens, "provider_usage")} tok, {ledgerCostLabel(row.costUsdMicros, props.costModel)}
+                <span className="shrink-0 text-right text-foreground">
+                  {formatMixedSpendLine({
+                    tokens: row.tokens,
+                    tokenSource: "provider_usage",
+                    meteredCostUsdMicros: row.costUsdMicros,
+                    hasSubscriptionOrLocal: row.costUsdMicros === null,
+                  })}
                 </span>
               </div>
             ))}

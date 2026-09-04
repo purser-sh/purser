@@ -22,6 +22,7 @@ import {
   SpendUpdatePayloadSchema,
   BudgetRequestPayloadSchema,
   BudgetExceededPayloadSchema,
+  DocumentRequestPayloadSchema,
   SpendReportPayloadSchema,
   RunEstimatePayloadSchema,
 } from "./server-payloads.ts";
@@ -81,6 +82,7 @@ export const ServerSyncEventMessageSchema = serverFrame("sync_event", SyncEventP
 export const ServerSpendUpdateMessageSchema = serverFrame("spend_update", SpendUpdatePayloadSchema);
 export const ServerBudgetRequestMessageSchema = serverFrame("budget_request", BudgetRequestPayloadSchema);
 export const ServerBudgetExceededMessageSchema = serverFrame("budget_exceeded", BudgetExceededPayloadSchema);
+export const ServerDocumentRequestMessageSchema = serverFrame("document_request", DocumentRequestPayloadSchema);
 export const ServerSpendReportMessageSchema = serverFrame("spend_report", SpendReportPayloadSchema);
 export const ServerRunEstimateMessageSchema = serverFrame("run_estimate", RunEstimatePayloadSchema);
 
@@ -106,6 +108,7 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   ServerSpendUpdateMessageSchema,
   ServerBudgetRequestMessageSchema,
   ServerBudgetExceededMessageSchema,
+  ServerDocumentRequestMessageSchema,
   ServerSpendReportMessageSchema,
   ServerRunEstimateMessageSchema,
 ]);

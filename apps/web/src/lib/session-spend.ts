@@ -3,6 +3,7 @@ import { providerDisplayLabel } from "@purser-sh/protocol";
 
 export type SpendRow = {
   key: string;
+  providerId?: string;
   tokens: number;
   costUsdMicros: number | null;
   isOthers?: boolean;
@@ -14,6 +15,7 @@ export function reportRows(report: SpendReportPayload | undefined): SpendRow[] {
   }
   return report.rows.map((row) => ({
     key: row.groupKey,
+    providerId: row.groupKey,
     tokens: row.inputTokens + row.outputTokens,
     costUsdMicros: row.costUsdMicros,
   }));
@@ -26,6 +28,7 @@ export function providerSpendRows(
   return reportRows(report).map((row) => ({
     ...row,
     key: providerDisplayLabel(row.key, configs),
+    providerId: row.providerId ?? row.key,
   }));
 }
 

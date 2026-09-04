@@ -14,6 +14,7 @@ export function purserHostedTools(
   }
   const tools: ToolName[] = [
     "read_file",
+    "read_document",
     "write_file",
     "apply_patch",
     "list_dir",
@@ -21,7 +22,7 @@ export function purserHostedTools(
     "web_search",
   ];
   if (options.runBashEnabled === true) {
-    tools.splice(5, 0, "run_bash");
+    tools.splice(tools.length - 1, 0, "run_bash");
   }
   return tools;
 }
@@ -51,7 +52,7 @@ export const ADAPTER_TOOL_SURFACES: Record<string, AdapterToolSurface> = {
   ollama: {
     kind: "purser_hosted",
     tools: purserHostedTools(true),
-    note: "All seven Purser tools are sent in /chat/completions. Use a coder-tuned model (e.g. qwen2.5-coder:7b+); generic instruct models often skip write_file/apply_patch.",
+    note: "All Purser hosted tools are sent in /chat/completions. Use a coder-tuned model (e.g. qwen2.5-coder:7b+); generic instruct models often skip write_file/apply_patch.",
   },
   grok: {
     kind: "purser_hosted",

@@ -7,10 +7,9 @@ import { FirstRunTip } from "@/components/FirstRunTip";
 import { FolderPicker } from "@/components/FolderPicker";
 import { LeftRail } from "@/components/LeftRail";
 import { RightPanel } from "@/components/RightPanel";
-import { SettingsPanel } from "@/components/SettingsPanel";
+import { SettingsScreen } from "@/components/SettingsScreen";
 import { ToastHost } from "@/components/ToastHost";
 import { TopBar } from "@/components/TopBar";
-import { Dialog } from "@/components/ui/dialog";
 import { ClientProvider } from "@/lib/client";
 import { useProviderReadiness } from "@/lib/readiness";
 import { useDeckStore } from "@/lib/store";
@@ -51,6 +50,17 @@ export function App() {
     return () => client.disconnect();
   }, [client]);
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        setSettings(true);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (bootstrap.data === undefined || client === null) {
     const detail =
       bootstrap.error instanceof Error
@@ -82,13 +92,11 @@ export function App() {
         <div className="flex min-h-0 flex-1">
           <LeftRail onOpenWorkspace={() => setPicker(true)} />
           <ChatPane onOpenWorkspace={() => setPicker(true)} />
-          <RightPanel onOpenWorkspace={() => setPicker(true)} />
+          <RightPanel onOpenSettings={() => setSettings(true)} onOpenWorkspace={() => setPicker(true)} />
         </div>
         <FolderPicker onClose={() => setPicker(false)} open={picker} />
-        <Dialog onClose={() => setSettings(false)} open={settings} title="Settings">
-          <SettingsPanel />
-        </Dialog>
-        <CommandPalette onOpenWorkspace={() => setPicker(true)} />
+        {settings ? <SettingsScreen onClose={() => setSettings(false)} /> : null}
+        <CommandPalette onOpenSettings={() => setSettings(true)} onOpenWorkspace={() => setPicker(true)} />
         <ToastHost />
       </div>
     </ClientProvider>

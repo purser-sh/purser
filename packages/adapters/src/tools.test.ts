@@ -11,6 +11,7 @@ import { which } from "./cli/which.ts";
 
 const REGISTERED = new Set([
   "read_file",
+  "read_document",
   "write_file",
   "apply_patch",
   "list_dir",

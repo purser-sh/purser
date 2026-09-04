@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  formatMixedSpendLine,
   ledgerCostCompact,
   ledgerCostLabel,
   ledgerTokenLabel,
   modelOptionLabel,
   modelSelectState,
+  subscriptionCostExplanation,
 } from "./display.ts";
 
 describe("display labels are derived from values", () => {
@@ -17,9 +19,24 @@ describe("display labels are derived from values", () => {
     expect(modelOptionLabel("echo-v1", undefined)).toBe("loading…");
   });
 
-  test("subscription providers never show a dollar cost", () => {
-    expect(ledgerCostLabel(1_000_000, "subscription")).toBe("included in plan");
-    expect(ledgerCostCompact(1_000_000, "subscription")).toBe("included in plan");
+  test("subscription and local providers never show a dollar cost", () => {
+    expect(ledgerCostLabel(1_000_000, "subscription")).toBe("subscription plan, tokens only");
+    expect(ledgerCostCompact(1_000_000, "subscription")).toBe("subscription plan, tokens only");
+    expect(ledgerCostLabel(5_000_000, "local")).toBe("local, tokens only");
+    expect(ledgerCostCompact(null, "local")).toBe("local, tokens only");
+    expect(subscriptionCostExplanation()).toContain("not knowable");
+  });
+
+  test("a mixed metered and subscription total never becomes one currency figure", () => {
+    const line = formatMixedSpendLine({
+      tokens: 10_000,
+      tokenSource: "provider_usage",
+      meteredCostUsdMicros: 1_500_000,
+      hasSubscriptionOrLocal: true,
+    });
+    expect(line).toContain("metered");
+    expect(line).toContain("subscription/local tokens only");
+    expect(line).not.toMatch(/^[^·]*\$/);
   });
 
   test("approximate token counts are never shown as exact", () => {

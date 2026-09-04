@@ -117,6 +117,19 @@ export const AgentEventUsageSchema = z
   })
   .strict();
 
+export const AgentEventDocumentRequestSchema = z
+  .object({
+    kind: z.literal("document_request"),
+    requestId: z.string().min(1),
+    path: z.string().min(1),
+    format: z.string().min(1),
+    tokenCount: z.number().int().nonnegative(),
+    tokenSource: z.enum(["exact", "approximate"]),
+    threshold: z.number().int().positive(),
+    costLabel: z.string().nullable(),
+  })
+  .strict();
+
 export const AgentEventErrorSchema = z
   .object({
     kind: z.literal("error"),
@@ -146,6 +159,7 @@ export const AgentEventSchema = z.preprocess(
     AgentEventToolResultSchema,
     AgentEventFileDiffSchema,
     AgentEventPermissionRequestSchema,
+    AgentEventDocumentRequestSchema,
     AgentEventUsageSchema,
     AgentEventErrorSchema,
     AgentEventDoneSchema,

@@ -38,6 +38,15 @@ Disclosure: there is no published security mailbox yet. Until launch, report iss
 - Production token injection: the compiled companion injects `window.__PURSER_BOOTSTRAP__` into HTML at request time. `/__purser/config` is 404 on the runner. Vite still mounts the JSON route in development only. See [docs/RELEASING.md](RELEASING.md).
 - Folder watch and host filesystem paths never go to a cloud API (README §4.2). That rule is not a local-attacker control.
 
+## Document conversion (`read_document`)
+
+- **Built-in (no extra install):** PDF (`pdf-parse`), Word (`mammoth`), Excel (`xlsx` / SheetJS).
+- **Optional:** [MarkItDown](https://github.com/microsoft/markitdown) (MIT, Microsoft) via a subprocess when installed — PowerPoint, images with OCR, EPUB, ZIP, and other long-tail formats. Missing Python or MarkItDown degrades gracefully; install/build never depend on it.
+- **Sandbox:** Only workspace-relative paths accepted; same resolver as `read_file`. No remote URLs. Subprocess invocations pass the absolute file path as an argument array element — never through a shell string.
+- **Limits:** Default 50 MB input cap and 30 s convert timeout (Settings → Workspace). Converted markdown is cached under `~/.purser/doc-cache/` (mode `0600`), keyed by content hash.
+- **Cost gate:** Token count uses the same path as the ledger. Documents over the threshold require explicit approval before entering context.
+- **Network:** Conversion is local. Built-in converters do not fetch remote content. MarkItDown is only invoked on local files Purser has already resolved inside the workspace.
+
 ## Shell (`run_bash`)
 
 - **Default:** off. Enable per workspace in Setup → Shell.

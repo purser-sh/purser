@@ -9,7 +9,7 @@ import {
   upsertBudget,
 } from "@purser-sh/db";
 import { recordUsageEvent } from "./meter.ts";
-import { classifyGate, inFlightGate, preRunGate, runIdsForWindow } from "./budget.ts";
+import { classifyGate, evaluateBudgets, inFlightGate, preRunGate, runIdsForWindow } from "./budget.ts";
 
 async function setup() {
   const db = openSqliteDatabase(":memory:");
@@ -159,5 +159,45 @@ describe("budget governor", () => {
       },
     ]);
     expect(result.kind).toBe("warn");
+  });
+
+  test("a currency-only cap is ignored for subscription providers; token caps still apply", async () => {
+    const db = openSqliteDatabase(":memory:");
+    await seedDefaults(db);
+    const workspace = insertWorkspace(db, {
+      name: "ws",
+      absPath: process.cwd(),
+      gitRemote: null,
+    });
+    const session = insertSession(db, {
+      workspaceId: workspace.id,
+      title: "claude",
+      providerId: "claude_code",
+      modelId: "sonnet",
+      permissionMode: "ask",
+    });
+    upsertBudget(db, {
+      scope: "global",
+      scopeId: null,
+      window: "run",
+      limitUsdMicros: 1,
+      limitTokens: null,
+      action: "hard_stop",
+      enabled: true,
+    });
+    const usdOnly = evaluateBudgets(db, session, new Date(), null);
+    expect(usdOnly).toEqual([]);
+
+    upsertBudget(db, {
+      scope: "global",
+      scopeId: null,
+      window: "run",
+      limitUsdMicros: null,
+      limitTokens: 50,
+      action: "hard_stop",
+      enabled: true,
+    });
+    const withTokens = evaluateBudgets(db, session, new Date(), null);
+    expect(withTokens.some((status) => status.unit === "tokens")).toBe(true);
   });
 });

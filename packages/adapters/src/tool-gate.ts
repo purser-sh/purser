@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const TOOL_NAMES = [
   "read_file",
+  "read_document",
   "write_file",
   "apply_patch",
   "list_dir",
@@ -13,6 +14,7 @@ export const TOOL_NAMES = [
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 const ReadFileArgsSchema = z.object({ path: z.string() }).strict();
+const ReadDocumentArgsSchema = z.object({ path: z.string() }).strict();
 const WriteFileArgsSchema = z.object({ path: z.string(), content: z.string() }).strict();
 const ApplyPatchArgsSchema = z.object({ patch: z.string() }).strict();
 const ListDirArgsSchema = z.object({ path: z.string() }).strict();
@@ -24,6 +26,7 @@ const WebSearchArgsSchema = z.object({ query: z.string() }).strict();
 
 const TOOL_SCHEMAS: Record<ToolName, z.ZodType<unknown>> = {
   read_file: ReadFileArgsSchema,
+  read_document: ReadDocumentArgsSchema,
   write_file: WriteFileArgsSchema,
   apply_patch: ApplyPatchArgsSchema,
   list_dir: ListDirArgsSchema,
@@ -37,6 +40,7 @@ export type GateResult =
   | { ok: false; reason: string };
 
 export type ReadFileArgs = z.infer<typeof ReadFileArgsSchema>;
+export type ReadDocumentArgs = z.infer<typeof ReadDocumentArgsSchema>;
 export type WriteFileArgs = z.infer<typeof WriteFileArgsSchema>;
 export type ApplyPatchArgs = z.infer<typeof ApplyPatchArgsSchema>;
 export type ListDirArgs = z.infer<typeof ListDirArgsSchema>;

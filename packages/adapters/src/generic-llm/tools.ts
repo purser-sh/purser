@@ -13,7 +13,7 @@ import { ApprovedShellCommand, executeApprovedShell } from "../shell-execute.ts"
 
 export const MAX_TOOL_OUTPUT = 32_000;
 export const MAX_FILE_BYTES = 256_000;
-export const MAX_TURNS = 16;
+export const MAX_TURNS = 25;
 
 export type ToolFileDiff = {
   path: string;
@@ -141,6 +141,19 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "read_file",
       description: "Read a file inside the workspace.",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "read_document",
+      description:
+        "Read a PDF, Word, Excel, PowerPoint, or image file inside the workspace. Converts to markdown for the model. Large documents may require approval.",
       parameters: {
         type: "object",
         properties: { path: { type: "string" } },
@@ -438,6 +451,12 @@ export async function runGatedTool(input: RunGatedToolInput): Promise<ToolExecut
         const output = input.webSearch ? await input.webSearch(args.query) : "web_search is not configured";
         return { ok: true, output, summary: `searched the web for ${args.query}` };
       }
+      default:
+        return {
+          ok: false,
+          output: `${gate.name} is handled outside the generic tool runner.`,
+          summary: gate.name,
+        };
     }
   } catch (error) {
     const message = error instanceof SandboxError || error instanceof Error ? error.message : "tool failed";
@@ -451,6 +470,7 @@ export function toolSummary(name: string, args: unknown): string {
   }
   const record = args as Record<string, unknown>;
   if (name === "read_file" && typeof record.path === "string") return `read ${record.path}`;
+  if (name === "read_document" && typeof record.path === "string") return `read document ${record.path}`;
   if (name === "write_file" && typeof record.path === "string") return `wrote ${record.path}`;
   if (name === "list_dir" && typeof record.path === "string") return `listed ${record.path || "."}`;
   if (name === "run_bash" && typeof record.command === "string") return `ran ${record.command.slice(0, 80)}`;

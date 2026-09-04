@@ -12,7 +12,7 @@ type Command = {
   run: () => void;
 };
 
-export function CommandPalette(props: { onOpenWorkspace: () => void }) {
+export function CommandPalette(props: { onOpenWorkspace: () => void; onOpenSettings: () => void }) {
   const open = useDeckStore((state) => state.commandPaletteOpen);
   const setOpen = useDeckStore((state) => state.setCommandPaletteOpen);
   const setRightPanelTab = useDeckStore((state) => state.setRightPanelTab);
@@ -62,11 +62,11 @@ export function CommandPalette(props: { onOpenWorkspace: () => void }) {
         },
       },
       {
-        id: "open-setup",
-        label: "Open Setup tab",
+        id: "open-settings",
+        label: "Open Settings",
         group: "Navigation",
         run: () => {
-          setRightPanelTab("setup");
+          props.onOpenSettings();
           setOpen(false);
         },
       },
@@ -127,7 +127,7 @@ export function CommandPalette(props: { onOpenWorkspace: () => void }) {
           group: "Session",
           run: () => {
             if (mode.id === "bypass") {
-              setRightPanelTab("setup");
+              props.onOpenSettings();
               setOpen(false);
               return;
             }

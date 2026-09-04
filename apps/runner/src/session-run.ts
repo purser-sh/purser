@@ -9,10 +9,13 @@ import {
   insertRun,
   updateSession,
   getWorkspaceShellSettings,
+  getDocumentSettings,
   LedgerIntegrityError,
+  loadState,
   type AppDatabase,
 } from "@purser-sh/db";
-import { describeVendorFailure } from "@purser-sh/adapters";
+import { describeVendorFailure, llmHistoryFromStoredEvents, priorSessionEvents, type DocumentApprovalRequest } from "@purser-sh/adapters";
+import type { DocumentDecision } from "@purser-sh/protocol";
 import { getAdapter } from "./registry.ts";
 import { appendRunLog } from "./run-log.ts";
 import { getSecret } from "./secrets.ts";
@@ -25,7 +28,9 @@ import { finalizeRunLedger, recordUsageEvent } from "./meter.ts";
 import {
   buildSpendUpdate,
   createSpendThrottle,
+  estimateDocumentCostLabel,
   inFlightGate,
+  refuseDocumentTokens,
   withLedgerLock,
 } from "./budget.ts";
 import type { BudgetDecision, BudgetStatus, SpendUpdatePayload } from "@purser-sh/protocol";
@@ -88,6 +93,7 @@ export async function executeRun(input: {
     decision: BudgetDecision;
     headroomUsdMicros?: number;
   }>;
+  askDocument?: (request: DocumentApprovalRequest) => Promise<DocumentDecision>;
   onSpendUpdate?: (payload: SpendUpdatePayload, terminal?: boolean) => void;
 }): Promise<void> {
   const session = getSession(input.db, input.sessionId);
@@ -110,6 +116,8 @@ export async function executeRun(input: {
   const extra = [buildExtraPrompt(workspace.absPath), provider?.settings.personaPrompt]
     .filter((part): part is string => typeof part === "string" && part.length > 0)
     .join("\n\n");
+  const sessionEvents = loadState(input.db).events.filter((event) => event.sessionId === input.sessionId);
+  const history = llmHistoryFromStoredEvents(priorSessionEvents(sessionEvents, input.prompt));
 
   let seq = 0;
   let runStatus: "ok" | "cancelled" | "error" = "ok";
@@ -136,6 +144,7 @@ export async function executeRun(input: {
       permissionMode: session.permissionMode,
       signal: input.signal,
       extraSystemPrompt: extra.length > 0 ? extra : undefined,
+      history,
       config: {
         baseUrl: provider?.baseUrl ?? null,
         apiKey,
@@ -147,6 +156,11 @@ export async function executeRun(input: {
           action: request.action,
           detail: request.detail,
         }),
+      documentSettings: getDocumentSettings(input.db),
+      purserHome: purserDir(),
+      checkDocumentBudget: (tokens) => refuseDocumentTokens(input.db, liveSession, startedAt, input.runId, tokens),
+      estimateDocumentCost: (tokens) => estimateDocumentCostLabel(liveSession, tokens),
+      askDocument: input.askDocument,
       shell: {
         enabled: shellSettings.runBashEnabled,
         allowDestructive: shellSettings.allowDestructiveShell,

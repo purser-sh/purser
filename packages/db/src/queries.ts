@@ -5,6 +5,7 @@ import type {
   BudgetScope,
   BudgetWindow,
   CostModel,
+  DocumentSettings,
   EventRole,
   FolderWatch,
   PermissionMode,
@@ -45,6 +46,13 @@ import {
 
 const FOLDER_WATCHES_KEY = "folder_watches";
 const WORKSPACE_SHELL_KEY = "workspace_shell";
+const DOCUMENT_SETTINGS_KEY = "document_settings";
+
+const DOCUMENT_SETTINGS_DEFAULT = {
+  tokenThreshold: 10_000,
+  maxFileBytes: 50 * 1024 * 1024,
+  convertTimeoutMs: 30_000,
+} satisfies DocumentSettings;
 
 export type WorkspaceShellSettings = {
   runBashEnabled: boolean;
@@ -87,6 +95,39 @@ export function updateWorkspaceShellSettings(
   };
   map[workspaceId] = next;
   upsertSetting(db, WORKSPACE_SHELL_KEY, map);
+  return next;
+}
+
+export function getDocumentSettings(db: AppDatabase): DocumentSettings {
+  const row = db.select().from(settings).where(eq(settings.key, DOCUMENT_SETTINGS_KEY)).get();
+  if (row === undefined || row.value === null || typeof row.value !== "object" || Array.isArray(row.value)) {
+    return { ...DOCUMENT_SETTINGS_DEFAULT };
+  }
+  const record = row.value as Record<string, unknown>;
+  return {
+    tokenThreshold:
+      typeof record.tokenThreshold === "number" && Number.isFinite(record.tokenThreshold)
+        ? Math.trunc(record.tokenThreshold)
+        : DOCUMENT_SETTINGS_DEFAULT.tokenThreshold,
+    maxFileBytes:
+      typeof record.maxFileBytes === "number" && Number.isFinite(record.maxFileBytes)
+        ? Math.trunc(record.maxFileBytes)
+        : DOCUMENT_SETTINGS_DEFAULT.maxFileBytes,
+    convertTimeoutMs:
+      typeof record.convertTimeoutMs === "number" && Number.isFinite(record.convertTimeoutMs)
+        ? Math.trunc(record.convertTimeoutMs)
+        : DOCUMENT_SETTINGS_DEFAULT.convertTimeoutMs,
+  };
+}
+
+export function updateDocumentSettings(db: AppDatabase, patch: Partial<DocumentSettings>): DocumentSettings {
+  const current = getDocumentSettings(db);
+  const next: DocumentSettings = {
+    tokenThreshold: patch.tokenThreshold ?? current.tokenThreshold,
+    maxFileBytes: patch.maxFileBytes ?? current.maxFileBytes,
+    convertTimeoutMs: patch.convertTimeoutMs ?? current.convertTimeoutMs,
+  };
+  upsertSetting(db, DOCUMENT_SETTINGS_KEY, next);
   return next;
 }
 
@@ -278,10 +319,18 @@ export function loadState(db: AppDatabase): StatePayload {
       .from(settings)
       .all()
       .map(mapSetting)
-      .filter((setting) => setting.key !== FOLDER_WATCHES_KEY && setting.key !== WORKSPACE_SHELL_KEY),
+      .filter(
+        (setting) =>
+          setting.key !== FOLDER_WATCHES_KEY &&
+          setting.key !== WORKSPACE_SHELL_KEY &&
+          setting.key !== DOCUMENT_SETTINGS_KEY,
+      ),
     folderWatches: listFolderWatches(db),
     budgets: listBudgets(db),
     spendSummary: loadSpendSummary(db),
+    documentSettings: getDocumentSettings(db),
+    documentCacheBytes: 0,
+    markitdown: { available: false },
     protocolVersion: PROTOCOL_VERSION,
   };
 }

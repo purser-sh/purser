@@ -93,27 +93,58 @@ function formatUsdMicros(micros: number): string {
 /** Cost line derived from ledger costModel + micro-USD — never invent a figure. */
 export function ledgerCostLabel(costUsdMicros: number | null, costModel: CostModel): string {
   if (costModel === "subscription") {
-    return "included in plan";
+    return "subscription plan, tokens only";
   }
-  if (costModel !== "metered") {
-    return "n/a";
+  if (costModel === "local") {
+    return "local, tokens only";
   }
   if (costUsdMicros === null) {
-    return "n/a";
+    return "unpriced";
   }
   return formatUsdMicros(costUsdMicros);
 }
 
+/** Why subscription/local never show dollars — for tooltips and row detail. */
+export function subscriptionCostExplanation(): string {
+  return "Your plan price is not knowable from the outside, so we report tokens rather than invent a currency figure.";
+}
+
 /** Compact cost for the run meter — same rules as ledgerCostLabel. */
 export function ledgerCostCompact(costUsdMicros: number | null, costModel: CostModel): string {
-  if (costModel !== "metered" || costUsdMicros === null) {
+  if (costModel !== "metered") {
     return ledgerCostLabel(costUsdMicros, costModel);
+  }
+  if (costUsdMicros === null) {
+    return "unpriced";
   }
   const dollars = costUsdMicros / 1_000_000;
   if (dollars >= 0.01) {
     return `≈$${dollars.toFixed(2)}`;
   }
   return `≈$${dollars.toFixed(4).replace(/0+$/, "").replace(/\.$/, ".0")}`;
+}
+
+/**
+ * Aggregate spend across providers that may mix metered and subscription cost models.
+ * Never returns one currency figure that covers subscription tokens.
+ */
+export function formatMixedSpendLine(input: {
+  tokens: number;
+  tokenSource: "estimated" | "provider_usage";
+  meteredCostUsdMicros: number | null;
+  hasSubscriptionOrLocal: boolean;
+}): string {
+  const tok = `${ledgerTokenLabel(input.tokens, input.tokenSource)} tok`;
+  if (input.meteredCostUsdMicros !== null && input.hasSubscriptionOrLocal) {
+    return `${tok} · metered ${formatUsdMicros(input.meteredCostUsdMicros)} · subscription/local tokens only`;
+  }
+  if (input.meteredCostUsdMicros !== null) {
+    return `${tok} · ${formatUsdMicros(input.meteredCostUsdMicros)}`;
+  }
+  if (input.hasSubscriptionOrLocal) {
+    return `${tok} · subscription plan, tokens only`;
+  }
+  return `${tok} · unpriced`;
 }
 
 /** Token total from ledger fields — approximate counts are never shown as exact. */

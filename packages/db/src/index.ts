@@ -31,6 +31,8 @@ export {
   updateWorkspace,
   getWorkspaceShellSettings,
   updateWorkspaceShellSettings,
+  getDocumentSettings,
+  updateDocumentSettings,
   type WorkspaceShellSettings,
   appendLedgerEntry,
   listLedgerByRun,

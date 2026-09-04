@@ -18,7 +18,7 @@ import {
   seedDefaults,
   sumLedgerRows,
 } from "@purser-sh/db";
-import { ledgerCostLabel, ledgerTokenLabel } from "@purser-sh/protocol";
+import { formatMixedSpendLine, ledgerCostLabel, ledgerTokenLabel } from "@purser-sh/protocol";
 import { tokensToUsdMicros } from "@purser-sh/pricing";
 import {
   appendAudit,
@@ -34,6 +34,7 @@ import { applyStaged, discardStaged, writeStaged } from "./staging.ts";
 
 const REGISTERED = new Set([
   "read_file",
+  "read_document",
   "write_file",
   "apply_patch",
   "list_dir",
@@ -80,6 +81,7 @@ function walkConfigTree(root: string): void {
 
 describe("what Purser promises", () => {
   test("nothing lands without your approval", async () => {
+    // Defends: nothing reaches disk without approval; ApprovedChange is required to write.
     tempHome();
     const root = mkdtempSync(join(tmpdir(), "purser-promise-root-"));
     const target = join(root, "README.md");
@@ -271,6 +273,12 @@ describe("what Purser promises", () => {
     expect(readFileSync(target, "utf8")).toBe(before);
   });
 
+  test("tamper evidence is hash-chained and verifiable from the CLI", () => {
+    const home = tempHome();
+    appendAudit(home, { ts: new Date().toISOString(), type: "run_started", runId: "run_chain" });
+    expect(verifyAudit(home).ok).toBe(true);
+  });
+
   test("tampering with the audit log is always detected", () => {
     const home = tempHome();
     appendAudit(home, { ts: "2026-08-25T12:00:00.000Z", type: "run_started", runId: "run_1" });
@@ -284,10 +292,21 @@ describe("what Purser promises", () => {
     expect(printVerify(result)).toContain("missing prevHash");
   });
 
-  test("subscription providers never display a cost", () => {
-    expect(ledgerCostLabel(5_000_000, "subscription")).toBe("included in plan");
-    expect(ledgerCostLabel(null, "subscription")).toBe("included in plan");
-    expect(ledgerCostLabel(5_000_000, "local")).toBe("n/a");
+  test("subscription and local providers never display a dollar cost", () => {
+    expect(ledgerCostLabel(5_000_000, "subscription")).toBe("subscription plan, tokens only");
+    expect(ledgerCostLabel(null, "subscription")).toBe("subscription plan, tokens only");
+    expect(ledgerCostLabel(5_000_000, "local")).toBe("local, tokens only");
+  });
+
+  test("a mixed metered and subscription total never becomes one currency figure", () => {
+    const line = formatMixedSpendLine({
+      tokens: 12_000,
+      tokenSource: "provider_usage",
+      meteredCostUsdMicros: 2_000_000,
+      hasSubscriptionOrLocal: true,
+    });
+    expect(line).toContain("metered");
+    expect(line).toContain("subscription/local tokens only");
   });
 
   test("an approximate token count is never shown as exact", () => {

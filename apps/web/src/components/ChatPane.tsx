@@ -2,7 +2,7 @@ import type { AgentEvent, StoredEvent } from "@purser-sh/protocol";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { DecisionCard } from "@/components/DecisionCard";
-import { BudgetDecisionCard, DiffCard, PermissionDecisionCard } from "@/components/DiffCard";
+import { BudgetDecisionCard, DiffCard, DocumentDecisionCard, PermissionDecisionCard } from "@/components/DiffCard";
 import { EmptyStart } from "@/components/EmptyStart";
 import { ProviderBlockedCard, RemedyCard } from "@/components/ProviderBlockedCard";
 import { MarkdownBody } from "@/components/MarkdownBody";
@@ -29,7 +29,7 @@ type RenderItem =
   | { kind: "event"; event: StoredEvent }
   | { kind: "tool"; call?: Extract<AgentEvent, { kind: "tool_call" }>; result?: Extract<AgentEvent, { kind: "tool_result" }> };
 
-function buildRenderItems(events: StoredEvent[]): RenderItem[] {
+export function buildRenderItems(events: StoredEvent[]): RenderItem[] {
   const items: RenderItem[] = [];
 
   for (const event of events) {
@@ -65,6 +65,7 @@ function EventView(props: {
   sessionId: string;
   onRecheck?: () => void;
   diffRef?: (node: HTMLDivElement | null) => void;
+  approvalFocus?: boolean;
 }) {
   const client = useRunner();
   if (props.event.payload.kind === "user_message") {
@@ -97,6 +98,7 @@ function EventView(props: {
         onReject={() => void client.request("diff_response", { sessionId: props.sessionId, path: agent.path, approve: false })}
         patch={agent.patch}
         path={agent.path}
+        primary={props.approvalFocus === true && agent.staged === true}
         removed={agent.removed}
       />
     );
@@ -112,11 +114,7 @@ function EventView(props: {
     );
   }
   if (agent.kind === "done") {
-    // A failed turn says nothing here: the error card above it is the whole report.
-    if (agent.status === "error" || agent.summary.length === 0) {
-      return null;
-    }
-    return <p className="text-center text-[length:var(--text-xs)] text-muted-foreground">{agent.summary}</p>;
+    return null;
   }
   if (agent.kind === "error") {
     const remedy = agent.remedy;
@@ -140,6 +138,7 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
   const liveText = useDeckStore((state) => state.liveText);
   const pending = useDeckStore((state) => state.pendingPermissions);
   const pendingBudgets = useDeckStore((state) => state.pendingBudgets);
+  const pendingDocuments = useDeckStore((state) => state.pendingDocuments);
   const configs = useDeckStore((state) => state.providerConfigs);
   const healthByProvider = useDeckStore((state) => state.healthByProvider);
   const recheckProvider = useRecheckProvider();
@@ -160,13 +159,22 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
   const blockedHealth = isBlocked(health) ? health : undefined;
 
   const pendingDiffs = useMemo(
-    () => visible.filter((event) => event.payload.kind === "file_diff"),
+    () => visible.filter((event) => event.payload.kind === "file_diff" && event.payload.staged === true),
     [visible],
   );
+  const awaitingApproval = pendingDiffs.length > 0 || pending.length > 0 || pendingBudgets.length > 0 || pendingDocuments.length > 0;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [visible, liveText, pending.length, pendingBudgets.length]);
+  }, [visible, liveText, pending.length, pendingBudgets.length, pendingDocuments.length]);
+
+  useEffect(() => {
+    if (pendingDiffs.length === 0) {
+      return;
+    }
+    const node = diffRefs.current[0];
+    node?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [pendingDiffs.length, pendingDiffs[0]?.id]);
 
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
@@ -241,6 +249,7 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
   const streaming = liveText[session.id] ?? "";
   const sessionPending = pending.filter((item) => item.sessionId === session.id);
   const sessionBudgets = pendingBudgets.filter((item) => item.sessionId === session.id);
+  const sessionDocuments = pendingDocuments.filter((item) => item.sessionId === session.id);
   const demo = session.providerId === "echo";
   let diffIndex = 0;
 
@@ -267,26 +276,50 @@ export function ChatPane(props: { onOpenWorkspace: () => void }) {
 
           {renderItems.map((item) => {
             if (item.kind === "tool") {
-              return <ToolRow call={item.call} key={`tool:${item.call?.toolId ?? item.result?.toolId}`} result={item.result} />;
+              return (
+                <div className={awaitingApproval ? "opacity-45" : undefined} key={`tool:${item.call?.toolId ?? item.result?.toolId}`}>
+                  <ToolRow call={item.call} result={item.result} />
+                </div>
+              );
             }
-            const isDiff = item.event.payload.kind === "file_diff";
-            const refIndex = isDiff ? diffIndex++ : -1;
+            const isPendingDiff =
+              item.event.payload.kind === "file_diff" && item.event.payload.staged === true;
+            const refIndex = isPendingDiff ? diffIndex++ : -1;
             return (
-              <EventView
-                diffRef={
-                  isDiff
-                    ? (node) => {
-                        diffRefs.current[refIndex] = node;
-                      }
-                    : undefined
-                }
-                event={item.event}
-                key={item.event.id}
-                onRecheck={() => recheckProvider(session.providerId)}
-                sessionId={session.id}
-              />
+              <div className={awaitingApproval && !isPendingDiff ? "opacity-45" : undefined} key={item.event.id}>
+                <EventView
+                  approvalFocus={awaitingApproval}
+                  diffRef={
+                    isPendingDiff
+                      ? (node) => {
+                          diffRefs.current[refIndex] = node;
+                        }
+                      : undefined
+                  }
+                  event={item.event}
+                  onRecheck={() => recheckProvider(session.providerId)}
+                  sessionId={session.id}
+                />
+              </div>
             );
           })}
+
+          {sessionDocuments.map((item) => (
+            <DocumentDecisionCard
+              costLabel={item.costLabel}
+              format={item.format}
+              key={item.requestId}
+              onAddAll={() => void client.request("document_response", { requestId: item.requestId, decision: "add_all" })}
+              onAddPartial={() =>
+                void client.request("document_response", { requestId: item.requestId, decision: "add_partial" })
+              }
+              onCancel={() => void client.request("document_response", { requestId: item.requestId, decision: "cancel" })}
+              path={item.path}
+              threshold={item.threshold}
+              tokenCount={item.tokenCount}
+              tokenSource={item.tokenSource}
+            />
+          ))}
 
           {sessionBudgets.map((item) => (
             <BudgetDecisionCard

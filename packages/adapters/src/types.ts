@@ -1,4 +1,19 @@
 import type { AgentEvent, CostModel, PermissionMode, ProviderKind, ReadinessState, Remedy } from "@purser-sh/protocol";
+import type { LlmHistoryMessage } from "./conversation-history.ts";
+import type { DocumentDecision as ProtocolDocumentDecision } from "@purser-sh/protocol";
+import type { DocumentSettings } from "./documents/settings.ts";
+
+export type DocumentDecision = ProtocolDocumentDecision;
+
+export interface DocumentApprovalRequest {
+  requestId: string;
+  path: string;
+  format: string;
+  tokenCount: number;
+  tokenSource: "exact" | "approximate";
+  threshold: number;
+  costLabel: string | null;
+}
 
 export interface PermissionDecision {
   requestId: string;
@@ -33,7 +48,15 @@ export interface RunInput {
   extraSystemPrompt?: string;
   config?: AdapterConfig;
   askPermission?: (request: PermissionDecision) => Promise<boolean>;
+  askDocument?: (request: DocumentApprovalRequest) => Promise<DocumentDecision>;
+  documentSettings?: DocumentSettings;
+  purserHome?: string;
+  /** Return a refusal message when adding this many tokens would exceed budget, or null if ok. */
+  checkDocumentBudget?: (tokens: number) => string | null;
+  estimateDocumentCost?: (tokens: number) => string | null;
   shell?: ShellRunOptions;
+  /** Prior turns for generic LLM adapters (OpenAI chat shape). */
+  history?: LlmHistoryMessage[];
 }
 
 export interface HealthResult {

@@ -1,11 +1,31 @@
 export type {
   AdapterConfig,
   AgentAdapter,
+  DocumentApprovalRequest,
+  DocumentDecision,
   HealthResult,
   ModelInfo,
   PermissionDecision,
   RunInput,
 } from "./types.ts";
+export {
+  clearDocCache,
+  convertDocument,
+  DEFAULT_DOCUMENT_SETTINGS,
+  detectDocumentFormat,
+  docCacheSizeBytes,
+  formatLabel,
+  markitdownStatus,
+  mergeDocumentSettings,
+  runReadDocumentFlow,
+  type DocumentSettings,
+} from "./documents/index.ts";
+export { buildWorkspaceContext } from "./workspace-context.ts";
+export {
+  llmHistoryFromStoredEvents,
+  priorSessionEvents,
+  type LlmHistoryMessage,
+} from "./conversation-history.ts";
 export { echoAdapter } from "./echo.ts";
 export { claudeCodeAdapter } from "./claude-code.ts";
 export { ollamaAdapter, grokAdapter, genericLlmAdapter, perplexityAdapter } from "./generic-llm/index.ts";

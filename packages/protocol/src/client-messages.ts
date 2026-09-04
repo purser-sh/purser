@@ -35,6 +35,9 @@ import {
   LinkRepositoryPayloadSchema,
   UpdateWorkspaceShellPayloadSchema,
   UndoShellPayloadSchema,
+  DocumentResponsePayloadSchema,
+  UpdateDocumentSettingsPayloadSchema,
+  ClearDocumentCachePayloadSchema,
 } from "./client-payloads.ts";
 import { IdSchema } from "./primitives.ts";
 
@@ -122,6 +125,15 @@ export const ClientUpdateWorkspaceShellMessageSchema = clientFrame(
   UpdateWorkspaceShellPayloadSchema,
 );
 export const ClientUndoShellMessageSchema = clientFrame("undo_shell", UndoShellPayloadSchema);
+export const ClientDocumentResponseMessageSchema = clientFrame("document_response", DocumentResponsePayloadSchema);
+export const ClientUpdateDocumentSettingsMessageSchema = clientFrame(
+  "update_document_settings",
+  UpdateDocumentSettingsPayloadSchema,
+);
+export const ClientClearDocumentCacheMessageSchema = clientFrame(
+  "clear_document_cache",
+  ClearDocumentCachePayloadSchema,
+);
 
 export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientHelloMessageSchema,
@@ -159,6 +171,9 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   ClientLinkRepositoryMessageSchema,
   ClientUpdateWorkspaceShellMessageSchema,
   ClientUndoShellMessageSchema,
+  ClientDocumentResponseMessageSchema,
+  ClientUpdateDocumentSettingsMessageSchema,
+  ClientClearDocumentCacheMessageSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;

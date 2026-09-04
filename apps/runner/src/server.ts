@@ -17,6 +17,7 @@ import {
   updateSession,
   updateWorkspace,
   updateWorkspaceShellSettings,
+  updateDocumentSettings,
   upsertProviderConfig,
   upsertVoiceProfile,
   upsertBudget,
@@ -33,7 +34,9 @@ import {
   type Session,
   type BudgetDecision,
   type BudgetStatus,
+  type DocumentDecision,
 } from "@purser-sh/protocol";
+import type { DocumentApprovalRequest } from "@purser-sh/adapters";
 import type { RunnerConfig } from "./config.ts";
 import { purserDir, resolvedHosts, resolvedOrigins } from "./config.ts";
 import { detectGitRemote, setOriginRemote } from "./git.ts";
@@ -72,6 +75,7 @@ import {
   preRunGate,
   withLedgerLock,
 } from "./budget.ts";
+import { clearDocCache, docCacheSizeBytes } from "@purser-sh/adapters";
 import { appendAudit } from "./audit.ts";
 
 function loadState(db: AppDatabase) {
@@ -98,6 +102,7 @@ export type AppContext = {
   activeRuns: Map<string, AbortController>;
   pendingPermissions: Map<string, (allow: boolean) => void>;
   pendingBudgets: Map<string, (reply: { decision: BudgetDecision; headroomUsdMicros?: number }) => void>;
+  pendingDocuments: Map<string, (decision: DocumentDecision) => void>;
   relay: RelayHandle | null;
   voice: VoiceSession | null;
   folderWatch: FolderWatchService | null;
@@ -343,6 +348,28 @@ async function startRunAfterGate(
       }
     },
     askBudget: (request) => askBudgetDecision(ctx, controller, { ...request, runId: run.id, sessionId: run.sessionId }),
+    askDocument: (request: DocumentApprovalRequest) =>
+      new Promise<DocumentDecision>((resolve) => {
+        ctx.pendingDocuments.set(request.requestId, resolve);
+        broadcast(ctx, {
+          type: "document_request",
+          payload: {
+            requestId: request.requestId,
+            sessionId: run.sessionId,
+            runId: run.id,
+            path: request.path,
+            format: request.format,
+            tokenCount: request.tokenCount,
+            tokenSource: request.tokenSource,
+            threshold: request.threshold,
+            costLabel: request.costLabel,
+          },
+        });
+        controller.signal.addEventListener("abort", () => {
+          ctx.pendingDocuments.delete(request.requestId);
+          resolve("cancel");
+        });
+      }),
     askPermission: (request) =>
       new Promise((resolve) => {
         ctx.pendingPermissions.set(request.requestId, resolve);
@@ -658,6 +685,39 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
         detail: message.payload.requestId,
       });
       send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "document_response": {
+      const pending = ctx.pendingDocuments.get(message.payload.requestId);
+      if (pending !== undefined) {
+        pending(message.payload.decision);
+        ctx.pendingDocuments.delete(message.payload.requestId);
+      }
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "update_document_settings": {
+      const settings = updateDocumentSettings(ctx.db, message.payload);
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "document_settings",
+        detail: JSON.stringify(settings),
+      });
+      send(client, { id: message.id, type: "state", payload: loadState(ctx.db) });
+      return;
+    }
+    case "clear_document_cache": {
+      const result = clearDocCache(purserDir());
+      send(client, {
+        id: message.id,
+        type: "state",
+        payload: loadState(ctx.db),
+      });
+      writeAudit(ctx, {
+        ts: new Date().toISOString(),
+        type: "document_cache_cleared",
+        detail: `${result.removed} files, ${docCacheSizeBytes(purserDir())} bytes remaining`,
+      });
       return;
     }
     case "list_models": {

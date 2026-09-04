@@ -49,6 +49,9 @@ export type BudgetAction = z.infer<typeof BudgetActionSchema>;
 export const BudgetDecisionSchema = z.enum(["allow_once", "allow_with_headroom", "deny"]);
 export type BudgetDecision = z.infer<typeof BudgetDecisionSchema>;
 
+export const DocumentDecisionSchema = z.enum(["add_all", "add_partial", "cancel"]);
+export type DocumentDecision = z.infer<typeof DocumentDecisionSchema>;
+
 export const TokenizerFamilySchema = z.enum(["openai", "anthropic", "google", "unknown"]);
 export type TokenizerFamily = z.infer<typeof TokenizerFamilySchema>;
 

@@ -7,6 +7,7 @@ import { applyStaged, discardStaged, writeStaged } from "./staging.ts";
 
 const REGISTERED = new Set([
   "read_file",
+  "read_document",
   "write_file",
   "apply_patch",
   "list_dir",

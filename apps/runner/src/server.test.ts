@@ -48,6 +48,7 @@ async function boot(): Promise<{ ctx: AppContext; server: { port: number; close:
     activeRuns: new Map(),
     pendingPermissions: new Map(),
     pendingBudgets: new Map(),
+    pendingDocuments: new Map(),
     relay: null,
     voice: null,
     folderWatch: null,

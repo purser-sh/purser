@@ -33,6 +33,7 @@ export function DiffCard(props: {
   onApprove: () => void;
   onReject: () => void;
   cardRef?: (node: HTMLDivElement | null) => void;
+  primary?: boolean;
 }) {
   const lines = useMemo(() => props.patch.replace(/\n$/, "").split("\n"), [props.patch]);
   const [expanded, setExpanded] = useState(lines.length <= HUNK_COLLAPSE);
@@ -40,12 +41,28 @@ export function DiffCard(props: {
   const visible = expanded ? lines : lines.slice(0, HUNK_COLLAPSE);
 
   return (
-    <div className="w-full" ref={props.cardRef}>
-      <div className="rounded-[var(--radius-card)] border border-border bg-card">
+    <div
+      className={cn(
+        "w-full",
+        props.primary && "rounded-[var(--radius-card)] ring-2 ring-accent ring-offset-2 ring-offset-background",
+      )}
+      ref={props.cardRef}
+    >
+      <div
+        className={cn(
+          "rounded-[var(--radius-card)] border bg-card",
+          props.primary ? "border-accent shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent)_35%,transparent)]" : "border-border",
+        )}
+      >
         <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-          <span className="min-w-0 truncate font-mono text-[length:var(--text-xs)] text-foreground" title={props.path}>
-            {truncatePathFromLeft(props.path, 56)}
-          </span>
+          <div className="min-w-0">
+            {props.primary ? (
+              <p className="mb-0.5 text-[length:var(--text-2xs)] label-caps text-accent">Needs your approval</p>
+            ) : null}
+            <span className="block min-w-0 truncate font-mono text-[length:var(--text-xs)] text-foreground" title={props.path}>
+              {truncatePathFromLeft(props.path, 56)}
+            </span>
+          </div>
           <span className="shrink-0 font-mono tabular-nums text-[length:var(--text-xs)]">
             <span className="text-pass">+{props.added}</span>
             {" / "}
@@ -176,6 +193,38 @@ export function ShellDecisionCard(props: {
           <p>{props.detail.effect}</p>
           {props.detail.undoNote ? <p className="text-muted-foreground">{props.detail.undoNote}</p> : null}
         </div>
+      </DecisionCard>
+    </div>
+  );
+}
+
+export function DocumentDecisionCard(props: {
+  path: string;
+  format: string;
+  tokenCount: number;
+  tokenSource: "exact" | "approximate";
+  threshold: number;
+  costLabel: string | null;
+  onAddAll: () => void;
+  onAddPartial: () => void;
+  onCancel: () => void;
+  cardRef?: (node: HTMLDivElement | null) => void;
+}) {
+  const tokenLabel = props.tokenSource === "exact" ? `${props.tokenCount.toLocaleString()} tokens` : `≈${props.tokenCount.toLocaleString()} tokens`;
+  const cost = props.costLabel !== null ? ` That is approximately ${props.costLabel} at the current model's input rate.` : "";
+  const fileName = props.path.split("/").pop() ?? props.path;
+  return (
+    <div ref={props.cardRef}>
+      <DecisionCard
+        actions={[
+          { label: "Cancel", onClick: props.onCancel, variant: "outline" },
+          { label: `Add first ${props.threshold.toLocaleString()} tokens`, onClick: props.onAddPartial, variant: "outline" },
+          { label: "Add all", onClick: props.onAddAll, variant: "pass" },
+        ]}
+        severity="warn"
+        title={`${fileName} converts to ${tokenLabel}`}
+      >
+        {`${fileName} (${props.format}) converts to ${tokenLabel}.${cost} Add it to the conversation, add only the first ${props.threshold.toLocaleString()} tokens, or cancel.`}
       </DecisionCard>
     </div>
   );

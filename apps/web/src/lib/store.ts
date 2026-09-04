@@ -1,6 +1,7 @@
 import type {
   BudgetRequestPayload,
   CostModel,
+  DocumentRequestPayload,
   ModelInfo,
   PermissionMode,
   PermissionRequestPayload,
@@ -21,7 +22,7 @@ import { create } from "zustand";
 import { useToastStore } from "@/lib/toast";
 
 export type ConnectionStatus = "idle" | "connecting" | "ready" | "error";
-export type RightPanelTab = "spend" | "files" | "setup";
+export type RightPanelTab = "spend" | "files";
 
 type DeckStore = StatePayload & {
   connection: ConnectionStatus;
@@ -37,6 +38,7 @@ type DeckStore = StatePayload & {
   healthByProvider: Record<string, ProviderHealthPayload>;
   pendingPermissions: PermissionRequestPayload[];
   pendingBudgets: BudgetRequestPayload[];
+  pendingDocuments: DocumentRequestPayload[];
   lastSpendBySession: Record<string, SpendUpdatePayload>;
   relayStatus: RelayStatusPayload | null;
   transcriptPartial: string;
@@ -54,6 +56,7 @@ type DeckStore = StatePayload & {
   setVoiceActive: (active: boolean) => void;
   clearPermission: (requestId: string) => void;
   clearBudget: (requestId: string) => void;
+  clearDocument: (requestId: string) => void;
 };
 
 const SELECTION_KEY = "purser.selection";
@@ -124,6 +127,13 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   folderWatches: [],
   budgets: [],
   spendSummary: emptySpendSummary,
+  documentSettings: {
+    tokenThreshold: 10_000,
+    maxFileBytes: 50 * 1024 * 1024,
+    convertTimeoutMs: 30_000,
+  },
+  documentCacheBytes: 0,
+  markitdown: { available: false },
   protocolVersion: PROTOCOL_VERSION,
   selectedWorkspaceId: null,
   selectedSessionId: null,
@@ -136,6 +146,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   healthByProvider: {},
   pendingPermissions: [],
   pendingBudgets: [],
+  pendingDocuments: [],
   lastSpendBySession: {},
   relayStatus: null,
   transcriptPartial: "",
@@ -150,6 +161,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     set({ pendingPermissions: get().pendingPermissions.filter((item) => item.requestId !== requestId) }),
   clearBudget: (requestId) =>
     set({ pendingBudgets: get().pendingBudgets.filter((item) => item.requestId !== requestId) }),
+  clearDocument: (requestId) =>
+    set({ pendingDocuments: get().pendingDocuments.filter((item) => item.requestId !== requestId) }),
   setConnection: (status, detail) => set({ connection: status, connectionDetail: detail ?? null }),
   applyState: (state) => {
     const selected = selectAfterState(state, get().selectedWorkspaceId, get().selectedSessionId);
@@ -243,6 +256,15 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       set({
         pendingBudgets: [
           ...current.pendingBudgets.filter((item) => item.requestId !== message.payload.requestId),
+          message.payload,
+        ],
+      });
+      return;
+    }
+    if (message.type === "document_request") {
+      set({
+        pendingDocuments: [
+          ...current.pendingDocuments.filter((item) => item.requestId !== message.payload.requestId),
           message.payload,
         ],
       });

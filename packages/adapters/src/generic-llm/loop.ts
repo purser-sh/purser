@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@purser-sh/protocol";
+import type { AgentEvent, PermissionMode } from "@purser-sh/protocol";
 import type { RunInput } from "../types.ts";
 import { loadMcpTools } from "../mcp.ts";
 import { gateToolCall, gateReasonForModel, type GateResult, type RunBashArgs, type ToolName } from "../tool-gate.ts";
@@ -7,6 +7,9 @@ import { purserHostedTools } from "../tool-catalog.ts";
 import { classifyShellCommand } from "../shell-classify.ts";
 import { ApprovedShellCommand } from "../shell-execute.ts";
 import { shellPermissionDetail, type ApprovableShellClassification } from "../shell-permission.ts";
+import { buildWorkspaceContext } from "../workspace-context.ts";
+import { runReadDocumentFlow } from "../documents/read-document-flow.ts";
+import type { ReadDocumentArgs } from "../tool-gate.ts";
 import { MAX_TURNS, runGatedTool, TOOL_DEFINITIONS, toolSummary, type ToolExecutionResult } from "./tools.ts";
 import { usageEventFromProvider } from "../usage.ts";
 
@@ -22,6 +25,38 @@ type ToolCall = {
   type: "function";
   function: { name: string; arguments: string };
 };
+
+function permissionModeBlock(mode: PermissionMode): string {
+  switch (mode) {
+    case "ask":
+      return "Permission mode: ask. Read-only tools run immediately. write_file, apply_patch, and run_bash need user approval before they touch disk.";
+    case "auto_edit":
+      return "Permission mode: auto_edit. File edits apply immediately after gating.";
+    case "bypass":
+      return "Permission mode: bypass. All tools run immediately and are audit-logged.";
+  }
+}
+
+function buildSystemPrompt(input: {
+  workspaceRoot: string;
+  permissionMode: PermissionMode;
+  extraSystemPrompt?: string;
+}): string {
+  return [
+    "You are a coding agent. Tools are attached to this request in the native tools field — use them.",
+    "",
+    "You have tools. Use them. Never ask the user to paste file contents you can read yourself.",
+    "Before answering a question about the codebase, inspect it with list_dir and ripgrep_search.",
+    "Never describe a tool. Call it.",
+    "",
+    permissionModeBlock(input.permissionMode),
+    "",
+    buildWorkspaceContext(input.workspaceRoot),
+    input.extraSystemPrompt ?? "",
+  ]
+    .filter((part) => part.length > 0)
+    .join("\n\n");
+}
 
 function parseMcpArguments(raw: string): { ok: true; args: unknown } | { ok: false; reason: string } {
   try {
@@ -43,6 +78,10 @@ function toToolCalls(normalized: Extract<ReturnType<typeof normalizeProviderResp
   }));
 }
 
+function callFingerprint(call: ToolCall): string {
+  return `${call.function.name}:${call.function.arguments}`;
+}
+
 async function complete(input: {
   baseUrl: string;
   apiKey: string | null;
@@ -56,25 +95,29 @@ async function complete(input: {
   if (input.apiKey) {
     headers.authorization = `Bearer ${input.apiKey}`;
   }
+  const body: Record<string, unknown> = {
+    model: input.model,
+    messages: input.messages,
+    stream: false,
+  };
+  if (input.tools !== undefined && input.tools.length > 0) {
+    body.tools = input.tools;
+    body.tool_choice = "auto";
+  }
   const response = await fetch(url, {
     method: "POST",
     headers,
     signal: input.signal,
-    body: JSON.stringify({
-      model: input.model,
-      messages: input.messages,
-      tools: input.tools,
-      stream: false,
-    }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw new Error(`LLM ${response.status}: ${await response.text()}`);
   }
-  const body: unknown = await response.json();
-  if (!isLoopRecord(body) || !Array.isArray(body.choices)) {
+  const payload: unknown = await response.json();
+  if (!isLoopRecord(payload) || !Array.isArray(payload.choices)) {
     throw new Error("LLM returned no message");
   }
-  const first = body.choices[0];
+  const first = payload.choices[0];
   const message = isLoopRecord(first) && isLoopRecord(first.message) ? first.message : undefined;
   if (message === undefined) {
     throw new Error("LLM returned no message");
@@ -85,7 +128,7 @@ async function complete(input: {
       content: typeof message.content === "string" ? message.content : null,
       tool_calls: message.tool_calls as ToolCall[] | undefined,
     },
-    usage: isLoopRecord(body.usage) ? body.usage : undefined,
+    usage: isLoopRecord(payload.usage) ? payload.usage : undefined,
   };
 }
 
@@ -104,19 +147,20 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: [
-        "You are a coding agent. Use tools to inspect and edit the workspace.",
-        "When the user asks you to change files, you must call write_file or apply_patch — reading or searching alone is not enough.",
-        "Never escape the workspace root.",
-        input.extraSystemPrompt ?? "",
-      ]
-        .filter((part) => part.length > 0)
-        .join("\n\n"),
+      content: buildSystemPrompt({
+        workspaceRoot: input.workspaceRoot,
+        permissionMode: input.permissionMode,
+        extraSystemPrompt: input.extraSystemPrompt,
+      }),
     },
+    ...(input.history ?? []),
     { role: "user", content: input.prompt },
   ];
 
   yield { kind: "session_started", providerSessionId: input.providerSessionId ?? `llm-${input.runId}` };
+
+  let lastFingerprint: string | null = null;
+  let repeatCount = 0;
 
   try {
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
@@ -160,7 +204,6 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
 
     messages.push(assistant);
     if (emitText.length > 0) {
-      yield { kind: "text_delta", text: emitText };
       yield { kind: "text", text: emitText };
     }
     if (invalidContentCall !== null) {
@@ -180,13 +223,30 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
         output: `${invalidContentCall.reason}\n\n${invalidContentCall.raw}`,
         ms: 0,
       };
-      yield { kind: "done", status: "ok", summary: invalidContentCall.reason };
+      yield { kind: "done", status: "ok", summary: "" };
       return;
     }
     if (calls.length === 0) {
-      yield { kind: "done", status: "ok", summary: emitText.slice(0, 160) || "Finished" };
+      yield { kind: "done", status: "ok", summary: "" };
       return;
     }
+
+    for (const call of calls) {
+      const fingerprint = callFingerprint(call);
+      if (fingerprint === lastFingerprint) {
+        repeatCount += 1;
+      } else {
+        lastFingerprint = fingerprint;
+        repeatCount = 1;
+      }
+      if (repeatCount >= 3) {
+        const message = `Stopped: the model repeated the same tool call three times (${call.function.name}).`;
+        yield { kind: "error", message, fatal: true, remedy: null };
+        yield { kind: "done", status: "error", summary: message };
+        return;
+      }
+    }
+
     for (const call of calls) {
       const isMcp = call.function.name.startsWith("mcp__");
       const gated = isMcp
@@ -269,6 +329,7 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
         input.permissionMode === "ask" &&
         input.askPermission &&
         gated.name !== "read_file" &&
+        gated.name !== "read_document" &&
         gated.name !== "list_dir" &&
         gated.name !== "ripgrep_search" &&
         gated.name !== "web_search" &&
@@ -285,6 +346,35 @@ export async function* runToolLoop(input: RunInput & { allowFiles: boolean }): A
           });
           continue;
         }
+      }
+      if (gated.name === "read_document") {
+        const started = Date.now();
+        const args = gated.args as ReadDocumentArgs;
+        const docResult = await runReadDocumentFlow({
+          cwd: input.cwd,
+          args,
+          modelId: input.modelId,
+          settings: input.documentSettings,
+          home: input.purserHome,
+          requestId: call.id,
+          askDocument: input.askDocument,
+          checkDocumentBudget: input.checkDocumentBudget,
+          estimateDocumentCost: input.estimateDocumentCost,
+        });
+        yield { kind: "tool_call", toolId: call.id, name: gated.name, input: gated.args, summary: docResult.summary };
+        yield {
+          kind: "tool_result",
+          toolId: call.id,
+          ok: docResult.ok,
+          output: docResult.output,
+          ms: Date.now() - started,
+        };
+        messages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: typeof docResult.output === "string" ? docResult.output : JSON.stringify(docResult.output),
+        });
+        continue;
       }
       yield { kind: "tool_call", toolId: call.id, name: call.function.name, input: gated.args, summary };
       const started = Date.now();
@@ -382,3 +472,21 @@ async function webSearchPerplexity(apiKey: string, query: string, signal: AbortS
   const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return body.choices?.[0]?.message?.content ?? "no result";
 }
+
+/** @internal Exported for tests that assert the outbound request shape. */
+export function buildLoopRequestBody(input: {
+  model: string;
+  messages: ChatMessage[];
+  tools: Array<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }>;
+}): Record<string, unknown> {
+  return {
+    model: input.model,
+    messages: input.messages,
+    tools: input.tools,
+    tool_choice: "auto",
+    stream: false,
+  };
+}
+
+/** @internal Exported for tests that assert the system prompt. */
+export { buildSystemPrompt };

@@ -3,6 +3,7 @@ import { gateToolCall, gateReasonForModel } from "./tool-gate.ts";
 
 const REGISTERED = new Set([
   "read_file",
+  "read_document",
   "write_file",
   "apply_patch",
   "list_dir",
@@ -20,6 +21,11 @@ describe("gateToolCall", () => {
       expect(result.reason).toContain("Invalid JSON");
       expect(gateReasonForModel(result)).toContain("Fix the arguments");
     }
+  });
+
+  test("passes a valid read_document call", () => {
+    const result = gateToolCall("read_document", JSON.stringify({ path: "spec.pdf" }), REGISTERED);
+    expect(result.ok).toBe(true);
   });
 
   test("passes a valid write_file call", () => {

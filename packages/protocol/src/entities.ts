@@ -143,6 +143,24 @@ export const FolderWatchSchema = z
   .strict();
 export type FolderWatch = z.infer<typeof FolderWatchSchema>;
 
+export const DocumentSettingsSchema = z
+  .object({
+    tokenThreshold: z.number().int().positive(),
+    maxFileBytes: z.number().int().positive(),
+    convertTimeoutMs: z.number().int().positive(),
+  })
+  .strict();
+export type DocumentSettings = z.infer<typeof DocumentSettingsSchema>;
+
+export const MarkitdownCapabilitySchema = z
+  .object({
+    available: z.boolean(),
+    installCommand: z.string().min(1).nullable().optional(),
+    detail: z.string().min(1).nullable().optional(),
+  })
+  .strict();
+export type MarkitdownCapability = z.infer<typeof MarkitdownCapabilitySchema>;
+
 export const BudgetSchema = z
   .object({
     id: IdSchema,

@@ -10,13 +10,13 @@ This document explains **what Purser is**, **how the pieces fit together**, and 
 
 Coding agents (Claude Code, Ollama, Cursor CLI, Codex, Gemini CLI, Grok, Perplexity, …) do the work. Purser sits in front of them and answers three questions every serious team eventually asks:
 
-1. **How much did this cost?** — token ledger, budgets, run meter (this run / today / this month).
+1. **Who approved it?** — permission cards, bypass TTL, verifiable audit trail; workspace writes require an `ApprovedChange`.
 2. **What actually changed?** — staged diffs, git worktrees, hash-chained audit log.
-3. **Who approved it?** — permission cards, bypass TTL, verifiable audit trail.
+3. **How much did this cost?** — token ledger, budgets, run meter (this run / today / this month).
 
 Agents run locally. The **runner and web console** do not phone home or send telemetry to Purser-operated services. Outbound network traffic happens only when you configure it: LLM provider API calls (keys in Settings), the hosted `web_search` tool (Perplexity when a key is set), optional voice (OpenAI STT/TTS), and shell commands such as `curl` when `run_bash` is enabled.
 
-**One sentence:** Purser wraps coding agents with metering you can audit, file edits you can approve, and shell commands you can classify, snapshot, and undo — through compile-time-enforced single paths, not hope.
+**One sentence:** Purser wraps coding agents with file edits you can approve, a record you can verify, and metering you can audit — through compile-time-enforced single paths, not hope.
 
 ---
 
@@ -95,7 +95,43 @@ packages/integrations Pairing codes, relay seal
 
 Most agent wrappers let the model call tools and rely on the UI to catch mistakes. Purser routes every dangerous operation through **narrow choke points**, enforced in TypeScript and tested at the source level.
 
-### 1. Tool gate — validation
+### Five single enforcement points
+
+Governance primitives. If you are scanning for where trust is enforced, start here.
+
+| Primitive | Where it lives | What becomes impossible |
+| --- | --- | --- |
+| **Tool input validation** | `packages/adapters/src/tool-gate.ts` (`gateToolCall`) | Malformed JSON, unknown tools, or args that fail the Zod schema never reach execution |
+| **Workspace writes, gated by `ApprovedChange`** | `packages/adapters/src/workspace-write.ts` (`commitToWorkspace`) | Any other call site writing workspace bytes — the type system requires an `ApprovedChange` only the approval step can mint |
+| **Display labels** | `packages/protocol/src/display.ts` | Showing a dollar figure for subscription/local providers, or an approximate token count as exact |
+| **Config resolution** | `packages/env/src/index.ts` (`resolvePurserEnv`) | Reading a `PURSER_*` variable outside the one typed resolver (README names are checked by test) |
+| **Adapter response normalisation** | `packages/adapters/src/tool-call-normalize.ts` (`normalizeProviderResponse`) | A second door for tool calls — API `tool_calls` and content-embedded JSON share one path into the gate |
+
+### What this gives you
+
+Only rows we can point at in code and a passing test today:
+
+| Capability | Status | Where |
+| --- | --- | --- |
+| Approval before any write | Enforced at compile time | `ApprovedChange`, `commitToWorkspace` |
+| Shell command authorisation | Allowlist; unknown treated as mutating | Shell classifier |
+| Rollback for mutating commands | Git restore point taken before execution | Shell gate / restore points |
+| Provenance of a change | Session, workspace, file path, and approve/reject recorded | Audit log (`diff_response`) |
+| Tamper evidence | Hash-chained, verifiable from the CLI | Audit log (`purser audit verify`) |
+| Spend and quota limits | Checked before a run starts and as usage accumulates | Budget governor |
+
+### What this does not protect against
+
+These enforcement points do **not** make Purser a sandbox against a hostile same-user process, a compromised provider, or a prompt that tricks you into clicking Approve. In particular:
+
+- A process running as the same OS user can still read `~/.purser/secrets.json` and the SQLite file.
+- Loopback binding alone does not stop a malicious page from opening the websocket — Origin/Host allowlists do that work (see [SECURITY.md](SECURITY.md)).
+- Bypass mode is god mode with a TTL; while it is on, tools run without cards.
+- Native CLI adapters (Claude Code, Codex, …) still speak their own protocols; Purser meters and audits where hooked, but their internal tools are not rewritten through `gateToolCall`.
+
+Do not read the table above as a claim that every agent action is impossible without Purser. The full threat model is in [SECURITY.md](SECURITY.md).
+
+### Tool gate — validation
 
 Every hosted tool call passes through `gateToolCall()` (`packages/adapters/src/tool-gate.ts`):
 
@@ -103,7 +139,7 @@ Every hosted tool call passes through `gateToolCall()` (`packages/adapters/src/t
 - Zod schema per tool name.
 - Unknown tools rejected before the adapter loop runs.
 
-### 2. File writes — approval token
+### File writes — approval token
 
 File mutations never write disk directly from the model:
 
@@ -118,7 +154,7 @@ Model proposes write_file / apply_patch
 
 `workspace-write.source.test.ts` scans the codebase and asserts **one write path**.
 
-### 3. Shell — classified, approved, single executor
+### Shell — classified, approved, single executor
 
 `run_bash` is **disabled by default**. Opt in per workspace in Setup → Shell.
 
@@ -197,7 +233,7 @@ Shell undo is separate: a session-scoped restore point captured **before mutatin
 | **Secrets** | API keys in `~/.purser/secrets.json` (mode `0600`); never SQLite |
 | **Config** | Runner token in `~/.purser/config.json` (0600); never printed |
 
-The run meter in the top bar is the spend headline. The prompt coach under the composer counts **this prompt only** before Send — not the agent loop. See [METERING.md](METERING.md).
+The run meter sits after status and pending-approval counts in the top bar. The prompt coach under the composer counts **this prompt only** before Send — not the agent loop. See [METERING.md](METERING.md).
 
 ---
 

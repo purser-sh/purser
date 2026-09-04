@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { BudgetActionSchema, BudgetDecisionSchema, BudgetScopeSchema, BudgetWindowSchema, PermissionModeSchema, VoiceInputModeSchema } from "./enums.ts";
+import { BudgetActionSchema, BudgetDecisionSchema, BudgetScopeSchema, BudgetWindowSchema, DocumentDecisionSchema, PermissionModeSchema, VoiceInputModeSchema } from "./enums.ts";
+import { DocumentSettingsSchema } from "./entities.ts";
 import { AbsolutePathSchema, IdSchema, UserFsPathSchema, WorkspaceRelativePathSchema } from "./primitives.ts";
 
 export const HelloPayloadSchema = z
@@ -295,3 +296,17 @@ export const UndoShellPayloadSchema = z
   })
   .strict();
 export type UndoShellPayload = z.infer<typeof UndoShellPayloadSchema>;
+
+export const DocumentResponsePayloadSchema = z
+  .object({
+    requestId: IdSchema,
+    decision: DocumentDecisionSchema,
+  })
+  .strict();
+export type DocumentResponsePayload = z.infer<typeof DocumentResponsePayloadSchema>;
+
+export const UpdateDocumentSettingsPayloadSchema = DocumentSettingsSchema.partial().strict();
+export type UpdateDocumentSettingsPayload = z.infer<typeof UpdateDocumentSettingsPayloadSchema>;
+
+export const ClearDocumentCachePayloadSchema = z.object({}).strict();
+export type ClearDocumentCachePayload = z.infer<typeof ClearDocumentCachePayloadSchema>;

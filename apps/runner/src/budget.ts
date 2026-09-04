@@ -13,6 +13,8 @@ import {
   type LedgerTotals,
 } from "@purser-sh/db";
 import { BUILTIN_CATALOG, catalogStale, countTokens, priceFor } from "@purser-sh/pricing";
+import { docCacheSizeBytes, markitdownStatus } from "@purser-sh/adapters";
+import { getDocumentSettings } from "@purser-sh/db";
 import type {
   Budget,
   BudgetStatus,
@@ -22,7 +24,9 @@ import type {
   SpendReportPayload,
   SpendUpdatePayload,
 } from "@purser-sh/protocol";
+import { budgetWindowLabel } from "@purser-sh/protocol";
 import { getAdapter } from "./registry.ts";
+import { purserDir } from "./config.ts";
 
 export type GateResult =
   | { kind: "ok"; statuses: BudgetStatus[] }
@@ -36,12 +40,18 @@ function costModelFor(providerId: string): CostModel {
 
 export function decorateState(db: AppDatabase) {
   const state = loadState(db);
+  const md = markitdownStatus();
   return {
     ...state,
     spendSummary: {
       ...state.spendSummary,
       catalogStale: BUILTIN_CATALOG.some((row) => catalogStale(row)),
     },
+    documentSettings: getDocumentSettings(db),
+    documentCacheBytes: docCacheSizeBytes(purserDir()),
+    markitdown: md.available
+      ? { available: true as const }
+      : { available: false as const, installCommand: md.installCommand, detail: md.detail },
   };
 }
 
@@ -365,4 +375,41 @@ export function tightestBudget(statuses: BudgetStatus[]): BudgetStatus | undefin
     return undefined;
   }
   return statuses.reduce((best, item) => (item.pct >= best.pct ? item : best));
+}
+
+export function refuseDocumentTokens(
+  db: AppDatabase,
+  session: Session,
+  startedAt: Date,
+  runId: string,
+  extraTokens: number,
+): string | null {
+  for (const budget of applicableBudgets(db, session)) {
+    if (!budget.enabled || budget.limitTokens === null || budget.action !== "hard_stop") {
+      continue;
+    }
+    const totals = totalsForBudget(db, budget, session, startedAt, runId);
+    const spent = totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheWriteTokens;
+    if (spent + extraTokens > budget.limitTokens) {
+      return `Adding ${extraTokens.toLocaleString("en-US")} tokens would exceed the ${budgetWindowLabel(budget.window)} cap of ${budget.limitTokens.toLocaleString("en-US")} tokens.`;
+    }
+  }
+  return null;
+}
+
+export function estimateDocumentCostLabel(session: Session, tokens: number): string | null {
+  if (costModelFor(session.providerId) !== "metered" || session.modelId === null) {
+    return null;
+  }
+  const priced = priceFor(session.providerId, session.modelId, {
+    inputTokens: tokens,
+    outputTokens: 0,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+  });
+  if (priced.kind !== "priced") {
+    return null;
+  }
+  const dollars = priced.usdMicros / 1_000_000;
+  return `≈$${dollars.toFixed(2)}`;
 }

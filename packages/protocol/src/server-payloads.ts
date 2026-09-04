@@ -15,6 +15,8 @@ import {
   BudgetStatusSchema,
   SpendSummarySchema,
   TokenCountsSchema,
+  DocumentSettingsSchema,
+  MarkitdownCapabilitySchema,
 } from "./entities.ts";
 import {
   CostModelSchema,
@@ -38,6 +40,13 @@ export const StatePayloadSchema = z
     folderWatches: z.array(FolderWatchSchema).default([]),
     budgets: z.array(BudgetSchema).default([]),
     spendSummary: SpendSummarySchema,
+    documentSettings: DocumentSettingsSchema.default({
+      tokenThreshold: 10_000,
+      maxFileBytes: 50 * 1024 * 1024,
+      convertTimeoutMs: 30_000,
+    }),
+    documentCacheBytes: z.number().int().nonnegative().default(0),
+    markitdown: MarkitdownCapabilitySchema.default({ available: false }),
     protocolVersion: z.literal(PROTOCOL_VERSION),
   })
   .strict();
@@ -219,6 +228,21 @@ export const BudgetRequestPayloadSchema = z
   })
   .strict();
 export type BudgetRequestPayload = z.infer<typeof BudgetRequestPayloadSchema>;
+
+export const DocumentRequestPayloadSchema = z
+  .object({
+    requestId: IdSchema,
+    runId: IdSchema,
+    sessionId: IdSchema,
+    path: z.string().min(1),
+    format: z.string().min(1),
+    tokenCount: z.number().int().nonnegative(),
+    tokenSource: z.enum(["exact", "approximate"]),
+    threshold: z.number().int().positive(),
+    costLabel: z.string().nullable(),
+  })
+  .strict();
+export type DocumentRequestPayload = z.infer<typeof DocumentRequestPayloadSchema>;
 
 export const BudgetExceededPayloadSchema = z
   .object({

@@ -6,6 +6,7 @@ import { FirstRunTip } from "@/components/FirstRunTip";
 import { FolderPicker } from "@/components/FolderPicker";
 import { LeftRail } from "@/components/LeftRail";
 import { RightPanel } from "@/components/RightPanel";
+import { SettingsScreen } from "@/components/SettingsScreen";
 import { ToastHost } from "@/components/ToastHost";
 import { TopBar } from "@/components/TopBar";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ export function PhoneApp() {
   const [code, setCode] = useState("");
   const [paired, setPaired] = useState(false);
   const [picker, setPicker] = useState(false);
+  const [settings, setSettings] = useState(false);
 
   const client = useMemo(() => {
     if (!paired || code.length < 8) {
@@ -63,17 +65,18 @@ export function PhoneApp() {
   return (
     <ClientProvider value={client}>
       <div className="flex h-full flex-col">
-        <TopBar onSettings={() => undefined} />
+        <TopBar onSettings={() => setSettings(true)} />
         <BypassBanner />
         <FirstRunTip />
         <p className="bg-card px-3 py-1 text-center text-[length:var(--text-2xs)] text-muted-foreground">{connection}</p>
         <div className="flex min-h-0 flex-1">
           <LeftRail onOpenWorkspace={() => setPicker(true)} />
           <ChatPane onOpenWorkspace={() => setPicker(true)} />
-          <RightPanel onOpenWorkspace={() => setPicker(true)} />
+          <RightPanel onOpenSettings={() => setSettings(true)} onOpenWorkspace={() => setPicker(true)} />
         </div>
         <FolderPicker onClose={() => setPicker(false)} open={picker} />
-        <CommandPalette onOpenWorkspace={() => setPicker(true)} />
+        {settings ? <SettingsScreen onClose={() => setSettings(false)} /> : null}
+        <CommandPalette onOpenSettings={() => setSettings(true)} onOpenWorkspace={() => setPicker(true)} />
         <ToastHost />
       </div>
     </ClientProvider>

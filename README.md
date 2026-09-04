@@ -1,6 +1,12 @@
 # Purser
 
-**The purser for your coding agents** — one console that meters every run, records every change, and keeps an audit you can verify. Agents run on your machine; Purser's job is spend you can trust.
+**The purser for your coding agents.**
+
+Nothing an agent produces reaches your disk without your approval, and that is enforced by the type system: the only function that can write to your workspace requires a token only the approval step can mint.
+
+Every change is recorded in a hash-chained audit log you can verify from the CLI. Every run is metered — tokens for every provider, dollars only where a plan price is knowable from the outside.
+
+Agents run on your machine. Purser does not replace them, does not resell tokens, and never holds your provider logins — you keep those.
 
 **Free and open source · Apache-2.0 · Runs entirely on your machine**
 
@@ -73,7 +79,7 @@ bun run typecheck
 
 Unready providers show as blocked in the top-bar selector with the exact command to fix them. Purser will not start a run against a provider it already knows will fail.
 
-**Ollama models:** Purser sends all seven file tools (`read_file`, `write_file`, `apply_patch`, …) on every run. Many generic **instruct** models — including `qwen2.5:7b-instruct`, which declares tool support — still only call read/search tools and never `write_file` or `apply_patch`. Your run finishes with no proposed edit and it looks like Purser is broken; the tools were sent, the model just didn't use them.
+**Ollama models:** Purser sends eight workspace tools (`read_file`, `read_document`, `write_file`, `apply_patch`, …) on every run. Many generic **instruct** models — including `qwen2.5:7b-instruct`, which declares tool support — still only call read/search tools and never `write_file` or `apply_patch`. Your run finishes with no proposed edit and it looks like Purser is broken; the tools were sent, the model just didn't use them.
 
 For coding tasks, pull a **coder-tuned** model and select it in the top-bar model picker:
 
@@ -152,7 +158,20 @@ Spend is the product surface; the accent colour marks **one primary action per s
 
 **Browser vs runner tokenizers:** The prompt coach runs in the browser (Vite aliases `@purser-sh/pricing` → `browser.ts`). Anthropic ids stay **approximate** in-browser; the runner keeps exact Claude counts for the ledger. See [docs/METERING.md](docs/METERING.md).
 
-Also shipped: workspaces, sessions (title from first prompt), diffs, permission modes (`ask` / `auto_edit` / `bypass` with TTL), adapters (Echo, Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity), session git worktrees at HEAD, `read_file` / `list_dir` near-match hints, runner PATH augmentation for `ripgrep_search`, drop-folder → `.inbox/`, voice + `/phone`.
+Also shipped: workspaces, sessions (title from first prompt), diffs, permission modes (`ask` / `auto_edit` / `bypass` with TTL), adapters (Echo, Claude Code, Codex, Cursor CLI, Gemini CLI, Ollama, Grok, OpenAI-compatible, Perplexity), session git worktrees at HEAD, `read_file` / `read_document` / `list_dir` near-match hints, runner PATH augmentation for `ripgrep_search`, drop-folder → `.inbox/`, voice + `/phone`.
+
+### Workspace tools
+
+| Tool | What it does |
+| --- | --- |
+| `read_file` | Text files inside the workspace (512 KB preview cap) |
+| `read_document` | PDF, Word (DOCX), and Excel (XLSX) via built-in converters; PowerPoint, images, and other formats when [MarkItDown](https://github.com/microsoft/markitdown) is installed (`pip install 'markitdown[all]'`) |
+| `write_file` / `apply_patch` | Staged edits with diff cards |
+| `list_dir` / `ripgrep_search` | Navigate and search the tree |
+| `run_bash` | Opt-in shell (workspace setting) |
+| `web_search` | Research providers only |
+
+`read_document` converts locally (no network). Large conversions ask before entering context; see Settings → Workspace for the token threshold and file-size cap.
 
 </details>
 

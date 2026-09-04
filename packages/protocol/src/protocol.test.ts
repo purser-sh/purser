@@ -241,6 +241,13 @@ const emptyState = {
   settings: [{ key: "theme", value: "dark" }],
   folderWatches: [],
   budgets: [],
+  documentSettings: {
+    tokenThreshold: 10_000,
+    maxFileBytes: 50 * 1024 * 1024,
+    convertTimeoutMs: 30_000,
+  },
+  documentCacheBytes: 0,
+  markitdown: { available: false },
   protocolVersion: PROTOCOL_VERSION,
   spendSummary: {
     generatedAt: NOW,

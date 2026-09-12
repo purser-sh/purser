@@ -15,3 +15,23 @@ coverage
 .tmp-home-*
 .tmp-ws-*
 apps/runner/ui
+
+# belt and braces on secrets
+*.pem
+*.key
+secrets.json
+.purser/
+
+# archives
+*.zip
+*.tgz
+
+# editors and local agent state
+.vscode/
+.idea/
+.claude/
+
+# other build shapes
+*.tsbuildinfo
+build/
+out/

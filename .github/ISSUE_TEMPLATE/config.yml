@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and discussion
+    url: https://github.com/purser-sh/purser/discussions
+    about: Ask questions and share ideas in Discussions rather than opening an issue.

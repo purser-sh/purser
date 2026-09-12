@@ -1,0 +1,19 @@
+name: It didn't work on my machine
+description: The install or first run failed. This is the most useful report you can file.
+labels: ["first-run"]
+body:
+  - type: textarea
+    attributes:
+      label: Where did you give up?
+      description: The exact step. "I stopped reading at X" is a valid and useful answer.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What did you run, and what happened?
+  - type: input
+    attributes:
+      label: OS, Bun version, agent provider
+  - type: input
+    attributes:
+      label: How long had you spent before it failed?

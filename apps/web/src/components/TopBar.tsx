@@ -16,7 +16,7 @@ import {
   consoleRunState,
   consoleRunStateLabel,
 } from "@/lib/run-state";
-import { cycleTheme, readThemePreference, themeLabel, type ThemePreference } from "@/lib/theme";
+import { cycleTheme, readThemePreference, resolveEffectiveTheme, themeLabel, type ThemePreference } from "@/lib/theme";
 import { selectedSession, selectedWorkspace, useDeckStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,12 @@ function ThemeIcon({ preference }: { preference: ThemePreference }) {
     return <Moon className="h-4 w-4" />;
   }
   return <SunMoon className="h-4 w-4" />;
+}
+
+function BrandMark({ theme }: { theme: ThemePreference }) {
+  const effective = resolveEffectiveTheme(theme);
+  const src = effective === "dark" ? "/marks/hold-dark.svg" : "/marks/hold.svg";
+  return <img alt="" className="h-8 w-8 shrink-0" height={32} src={src} width={32} />;
 }
 
 function bypassCountdown(expiresAt: string | null, runsRemaining: number | null): string | null {
@@ -69,6 +75,20 @@ export function TopBar(props: { onSettings: () => void }) {
   const [bypassOpen, setBypassOpen] = useState(false);
   const [bypassText, setBypassText] = useState("");
   const [bypassAck, setBypassAck] = useState(false);
+
+  useEffect(() => {
+    document.title = workspace !== undefined ? `Purser — ${workspace.name}` : "Purser";
+  }, [workspace]);
+
+  useEffect(() => {
+    if (theme !== "system") {
+      return;
+    }
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => tick((value) => value + 1);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [theme]);
 
   useEffect(() => {
     if (session?.permissionMode !== "bypass") {
@@ -177,9 +197,7 @@ export function TopBar(props: { onSettings: () => void }) {
         )}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-border bg-card font-mono text-sm font-bold text-foreground">
-            P
-          </div>
+          <BrandMark theme={theme} />
           <span className="hidden text-sm font-semibold tracking-wide sm:inline">Purser</span>
           {workspace !== undefined ? (
             <span className="hidden max-w-[8rem] truncate text-[length:var(--text-xs)] text-muted-foreground md:inline" title={workspace.absPath}>

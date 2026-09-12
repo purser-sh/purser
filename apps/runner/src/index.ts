@@ -1,7 +1,9 @@
 import { openSqliteDatabase } from "@purser-sh/db";
 import { resolvePurserEnv } from "@purser-sh/env";
 import { printVerify, verifyAudit } from "./audit.ts";
-import { purserDir, configPath, loadOrCreateConfig } from "./config.ts";
+import { banner, header } from "./brand.ts";
+import { CLI_VERSION } from "./cli-version.ts";
+import { purserDir, configPath, loadOrCreateConfig, markCliBannerShown } from "./config.ts";
 import { formatListenError } from "./listen-error.ts";
 import { startServer, type AppContext } from "./server.ts";
 import { hasEmbeddedUi, resolveUiDir } from "./ui-serve.ts";
@@ -11,6 +13,10 @@ import { augmentProcessPath } from "@purser-sh/adapters";
 function userArgv(): string[] {
   const standalone = typeof Bun !== "undefined" && Bun.isStandaloneExecutable === true;
   return process.argv.slice(standalone ? 1 : 2);
+}
+
+function resolveCliVersion(): string {
+  return resolvePurserEnv().version ?? CLI_VERSION;
 }
 
 async function openBrowser(url: string): Promise<void> {
@@ -30,11 +36,23 @@ async function openBrowser(url: string): Promise<void> {
   }
 }
 
-const args = userArgv();
-if (args[0] === "--help" || args[0] === "-h") {
+function printHelp(version: string): void {
+  console.log(banner(version));
   console.log("Purser companion");
   console.log("  (no args)       start the runner, serve the UI, never print the token");
+  console.log("  --version       print the identity banner and version");
   console.log("  audit verify    verify ~/.purser/audit.jsonl");
+}
+
+const args = userArgv();
+const version = resolveCliVersion();
+
+if (args[0] === "--help" || args[0] === "-h") {
+  printHelp(version);
+  process.exit(0);
+}
+if (args[0] === "--version" || args[0] === "-V" || args[0] === "-v") {
+  console.log(banner(version));
   process.exit(0);
 }
 if (args[0] === "audit" && args[1] === "verify") {
@@ -44,6 +62,15 @@ if (args[0] === "audit" && args[1] === "verify") {
 }
 
 const config = loadOrCreateConfig();
+if (config.cliBannerShown !== true) {
+  console.log(banner(version));
+  markCliBannerShown();
+  config.cliBannerShown = true;
+}
+
+const workspace = config.allowedRoots[0];
+console.log(header(version, workspace));
+
 augmentProcessPath();
 const purserEnv = resolvePurserEnv();
 const db = openSqliteDatabase(purserEnv.databaseUrl);

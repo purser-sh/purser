@@ -1,0 +1,30 @@
+Full banner — first run, --help, --version. 65 columns, fits an 80-col terminal.
+The chevron is copper #F0743A, the bar and wordmark are paper #F7F4F1.
+
+  ██▄        ██   ██████╗ ██╗   ██╗██████╗ ███████╗███████╗██████╗
+    ▀██▄     ██   ██╔══██╗██║   ██║██╔══██╗██╔════╝██╔════╝██╔══██╗
+       ▀█▄   ██   ██████╔╝██║   ██║██████╔╝███████╗█████╗  ██████╔╝
+       ▄█▀   ██   ██╔═══╝ ██║   ██║██╔══██╗╚════██║██╔══╝  ██╔══██╗
+    ▄██▀     ██   ██║     ╚██████╔╝██║  ██║███████║███████╗██║  ██║
+  ██▀        ██   ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝
+
+  Approve every change before it lands.
+  v0.1.0  ·  local-first  ·  Apache-2.0
+
+
+Compact header — top of every run.
+
+  ❯│  purser v0.1.0  ·  ~/work/api
+
+
+The gate — the approval prompt. This is where the mark does real work.
+
+  ❯│  Approve write to src/server.ts?  [y/n/d]
+  ✓│  approved  · 41 lines · claude-code · 2,180 tok
+  ✗│  rejected  · nothing written
+
+
+Plain fallback — NO_COLOR, no TTY, or PURSER_ASCII=1.
+
+  >|  purser 0.1.0
+      Approve every change before it lands.

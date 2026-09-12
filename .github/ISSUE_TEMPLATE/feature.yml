@@ -1,0 +1,20 @@
+name: Feature request
+description: A change you want Purser to support.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: What do you want?
+      description: The user-visible outcome, not an implementation sketch.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Why does this matter?
+      description: What you cannot do today, or what is painful without it.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: How would you know it worked?
+      description: A short acceptance check.

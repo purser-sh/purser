@@ -10,6 +10,18 @@ REPO="${PURSER_REPO:-}"
 VERSION="${PURSER_VERSION:-latest}"
 PREFIX="${PURSER_PREFIX:-/usr/local}"
 
+# Compact identity — ASCII only. Colour only when stdout is a TTY and NO_COLOR is unset.
+purser_say() {
+  local msg="$1"
+  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    printf '\033[33m>| \033[0m %s\n' "${msg}"
+  else
+    printf '>|  %s\n' "${msg}"
+  fi
+}
+
+purser_say "purser install"
+
 if [[ -z "${REPO}" ]]; then
   echo "install.sh is not ready for public use yet (no tagged release)." >&2
   echo "Clone the repo and run: bun install && bun run dev" >&2
@@ -60,5 +72,5 @@ fi
 
 install -d "${PREFIX}/bin"
 install -m 0755 "${tmp}/${asset}" "${PREFIX}/bin/purser"
-echo "Installed ${PREFIX}/bin/purser"
+purser_say "installed  ·  ${PREFIX}/bin/purser"
 echo "Token is created in ~/.purser/config.json on first run and is not printed."

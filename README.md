@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/marks/hold-256-dark.png">
+    <img src="docs/brand/marks/hold-256.png" width="84" alt="Purser">
+  </picture>
+</p>
+
 # Purser
 
 **The purser for your coding agents.**

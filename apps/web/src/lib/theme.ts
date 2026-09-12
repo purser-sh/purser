@@ -44,3 +44,14 @@ export function themeLabel(preference: ThemePreference): string {
   }
   return "System theme";
 }
+
+/** Resolved light/dark for assets that need a concrete variant (system → media). */
+export function resolveEffectiveTheme(preference: ThemePreference): "light" | "dark" {
+  if (preference === "light" || preference === "dark") {
+    return preference;
+  }
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+  return "light";
+}

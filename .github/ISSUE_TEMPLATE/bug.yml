@@ -1,0 +1,23 @@
+name: Bug report
+description: Something that should work does not.
+labels: ["bug"]
+body:
+  - type: textarea
+    attributes:
+      label: What went wrong?
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: Commands, clicks, or a minimal sequence that triggers it.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: OS, Bun version, agent provider
+  - type: textarea
+    attributes:
+      label: Relevant output
+      description: Paste logs or terminal output. Redact secrets.

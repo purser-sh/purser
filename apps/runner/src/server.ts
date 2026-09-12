@@ -37,6 +37,7 @@ import {
   type DocumentDecision,
 } from "@purser-sh/protocol";
 import type { DocumentApprovalRequest } from "@purser-sh/adapters";
+import { formatPermissionGate, formatPermissionOutcome } from "./cli-gate.ts";
 import type { RunnerConfig } from "./config.ts";
 import { purserDir, resolvedHosts, resolvedOrigins } from "./config.ts";
 import { detectGitRemote, setOriginRemote } from "./git.ts";
@@ -373,6 +374,7 @@ async function startRunAfterGate(
     askPermission: (request) =>
       new Promise((resolve) => {
         ctx.pendingPermissions.set(request.requestId, resolve);
+        console.log(formatPermissionGate(request.action, request.detail));
         broadcast(ctx, {
           type: "permission_request",
           payload: {
@@ -448,8 +450,10 @@ async function handleUtterance(ctx: AppContext, text: string): Promise<void> {
   if (command.kind === "approve" || command.kind === "reject") {
     const first = ctx.pendingPermissions.keys().next().value;
     if (typeof first === "string") {
-      ctx.pendingPermissions.get(first)?.(command.kind === "approve");
+      const allow = command.kind === "approve";
+      ctx.pendingPermissions.get(first)?.(allow);
       ctx.pendingPermissions.delete(first);
+      console.log(formatPermissionOutcome(allow));
     }
     return;
   }
@@ -677,6 +681,7 @@ async function dispatch(ctx: AppContext, client: Client, message: ClientMessage)
       if (pending !== undefined) {
         pending(message.payload.allow);
         ctx.pendingPermissions.delete(message.payload.requestId);
+        console.log(formatPermissionOutcome(message.payload.allow));
       }
       writeAudit(ctx, {
         ts: new Date().toISOString(),

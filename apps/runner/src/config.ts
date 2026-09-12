@@ -19,10 +19,29 @@ export const RunnerConfigSchema = z
     bypassTtlMs: z.number().int().positive().optional(),
     bypassMaxRuns: z.number().int().positive().optional(),
     redactPaths: z.boolean().optional(),
+    /** Set after the CLI identity banner has been shown once (first run). */
+    cliBannerShown: z.boolean().optional(),
   })
   .strict();
 
 export type RunnerConfig = z.infer<typeof RunnerConfigSchema>;
+
+export function saveConfig(config: RunnerConfig): void {
+  writeFileSync(configPath(), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+}
+
+/** Persist first-run banner flag without rewriting env-overridden fields from memory. */
+export function markCliBannerShown(): void {
+  const path = configPath();
+  if (!existsSync(path)) {
+    return;
+  }
+  const loaded = RunnerConfigSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  if (loaded.cliBannerShown === true) {
+    return;
+  }
+  saveConfig({ ...loaded, cliBannerShown: true });
+}
 
 export function purserDir(): string {
   const override = resolvePurserEnv().home;
